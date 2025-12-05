@@ -17,14 +17,20 @@ def render_events(events: Iterable) -> Tuple[str, List[str]]:
     """Extract the final response text and any tool call logs for CLI output."""
     final_text = ""
     tool_summaries: List[str] = []
+    last_text = ""
     for event in events:
         calls = getattr(event, "get_function_calls", lambda: [])()
         if calls:
             for call in calls:
                 args = getattr(call, "args", None) or getattr(call, "arguments", None)
                 tool_summaries.append(f"tool_call: {call.name} args={args}")
+        text = _content_to_text(getattr(event, "content", None))
+        if text:
+            last_text = text
         if getattr(event, "is_final_response", lambda: False)():
-            final_text = _content_to_text(event.content)
+            final_text = text
+    if not final_text:
+        final_text = last_text
     return final_text, tool_summaries
 
 
