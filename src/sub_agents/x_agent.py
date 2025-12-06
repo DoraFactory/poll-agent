@@ -9,17 +9,17 @@ def build_x_feed_agent(settings: Settings) -> Agent:
     """
     Agent dedicated to pulling recent X posts via Grok.
 
-    - grok_recent_posts: 封装 fetch_x_posts，使其成为可被 ADK 调用的工具
-    - Agent: 使用 Gemini 模型充当一个数据搬运子代理
+    - grok_recent_posts: Wraps fetch_x_posts to make it callable by ADK
+    - Agent: Uses Gemini model as a data-fetching sub-agent
     """
 
     def grok_recent_posts(topic_hint: str = "", max_posts: int = 20) -> dict:
         """
         Fetch recent posts from configured X handles via Grok x_search.
 
-        参数：
-        - topic_hint：对主题的提示，用于增强搜索上下文
-        - max_posts：限制返回内容数量
+        Args:
+            topic_hint: Topic hint for enhancing search context
+            max_posts: Limit the number of returned items
         """
         return fetch_x_posts(
             handles=settings.default_handles,
@@ -31,12 +31,12 @@ def build_x_feed_agent(settings: Settings) -> Agent:
         )
 
     instruction_text = (
-        "你是负责收集并整理 X 平台最新帖子的子代理（x_feed_agent）。\n"
-        "你的任务：\n"
-        "1. 必须调用 tool `grok_recent_posts` 来获取 X 上的最新内容。\n"
-        "2. 收到工具返回后，必须输出工具返回的 'parsed' 字段的完整 JSON 内容。\n"
-        "3. 输出格式要求：直接输出 JSON 对象，不要添加任何前缀、后缀、解释或 markdown 代码块。\n"
-        "4. 不要修改、重写或生成投票内容，只传递原始数据。\n"
+        "You are the x_feed_agent responsible for collecting and organizing recent X posts.\n"
+        "Your tasks:\n"
+        "1. MUST call the `grok_recent_posts` tool to fetch latest content from X.\n"
+        "2. After receiving tool response, output the complete JSON content from the 'parsed' field.\n"
+        "3. Output format requirement: Output JSON directly, no prefixes, suffixes, explanations, or markdown code blocks.\n"
+        "4. Do not modify, rewrite, or generate poll content. Only pass through the raw data.\n"
     )
 
     return Agent(

@@ -64,7 +64,7 @@ def send_telegram_message(
         payload = {
             "chat_id": chat_id,
             "text": message,
-            "parse_mode": "Markdown"
+            "parse_mode": "HTML"  # Use HTML instead of Markdown for better reliability
         }
 
         try:

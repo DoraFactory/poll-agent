@@ -56,68 +56,69 @@ def fetch_x_posts(
     )
 
     hours = round(window_seconds / 3600, 2) if window_seconds else "recent"
-    window_label = f"{window_seconds} 秒" if window_seconds else "最近窗口"
+    window_label = f"{window_seconds} seconds" if window_seconds else "recent window"
     handles_str = ", ".join(cleaned_handles)
     prompt = f"""
-你现在是 UTC {now_utc}。对每个 handle，收集过去 {window_label}（~{hours}h）内的所有帖子/回复/转推，只挑出该 handle 最值得做 poll 的那一个话题。
+Current UTC time: {now_utc}. For each handle, collect all posts/replies/retweets from the past {window_label} (~{hours}h). Analyze each post's engagement metrics (likes, replies, reposts, views) and select the single most poll-worthy topic for that handle.
 
-核心要求：
-1. 几乎所有话题都允许：政治、选举、战争、宗教、争议话题、预测市场等完全可以
-2. 科技、经济、社会、娱乐、体育、文化等所有常规议题都允许
-3. 保持客观中立：标题和选项必须对称、无明显偏见，选项≤20字
+Core Requirements:
+1. Almost all topics are allowed: politics, elections, war, religion, controversial topics, prediction markets, etc.
+2. Technology, economy, society, entertainment, sports, culture and all mainstream topics are allowed
+3. Maintain objectivity and neutrality: titles and options must be balanced with no obvious bias, options ≤20 words, max 5 options.
 
-极少数拒绝情况（仅以下）：
-- 直接煽动暴力/伤害他人的内容
-- 露骨色情内容
-- 泄露他人隐私信息（公众人物的公开信息不算）
-目标 handles：{handles_str}
-可选 topic hint：{topic_hint or 'none'}
+Only Reject These:
+- Direct incitement to violence/harm
+- Explicit pornographic content
+- Privacy leaks (public figures' public info is acceptable)
 
-请严格输出以下 JSON（只输出 JSON，不要额外说明，也不要 ```json 包裹）：
+Target handles: {handles_str}
+Optional topic hint: {topic_hint or 'none'}
+
+Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):
 {{
   "per_handle": [
     {{
       "handle": "elonmusk",
-      "status": "已找到可投票话题" | "过去时间窗口内无新帖" | "无合适议题（原因：xxx）",
+      "status": "poll_topic_found" | "no_new_posts_in_window" | "no_suitable_topic (reason: xxx)",
       "poll_interval_posts_list": [
         {{
           "handle": "elonmusk",
           "posted_at": "YYYY-MM-DDTHH:MM:SSZ",
           "url": "https://x.com/...",
           "engagement": {{"likes": 0, "reposts": 0, "quotes": 0, "replies": 0, "views": 0}},
-          "context_summary": "1-2 句话概括为何值得关注",
+          "context_summary": "1-2 sentences explaining why this is noteworthy",
           "is_reply": false,
           "in_reply_to_url": "",
           "is_retweet": false,
           "original_url": "",
-          "text": "原文全文"
+          "text": "full original text"
         }}
       ],
       "poll": {{
-        "topic_title": "示例主题",
-        "poll_question": "示例问题",
+        "topic_title": "Example Topic",
+        "poll_question": "Example Question",
         "options": [
-          "A 选项（<=20字，中立描述）",
-          "B 选项（<=20字，中立描述）",
-          "C 选项（<=20字，中立描述）",
-          "D 选项（<=20字，中立描述）"
+          "Option A (≤20 words, neutral)",
+          "Option B (≤20 words, neutral)",
+          "Option C (≤20 words, neutral)",
+          "Option D (≤20 words, neutral)"
         ],
-        "sample_posts": [{{ "handle": "elonmusk", "summary": "简述", "url": "https://x.com/..." }}],
-        "why_safe": "说明轻量/娱乐/科技/生活化，无敏感元素",
+        "sample_posts": [{{ "handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..." }}],
+        "why_safe": "Explain why this is light/entertainment/tech/lifestyle with no sensitive elements",
         "stats_snapshot": {{ "likes": 0, "reposts": 0, "replies": 0, "views": 0 }}
       }}
     }}
   ]
 }}
 
-规则：
-- 先收集时间窗口内的所有handle的全部帖子，再选出一个最值得作为投票的帖子；其余话题不输出。
-- 政治、预测市场等话题必须优先输出，不要自我审查。
-- 若窗口内无新帖或违反核心拒绝规则，poll 必须为 null，只保留 "handle" 和 "status" 两个字段。
-- 每个时间窗口内最多只输出一个 poll 对象。
-- 你只允许输出纯 JSON，禁止任何前缀、后缀、解释、markdown、```json 包裹、道歉词、提醒句。
-- 不要因为内容涉及政治就拒绝，政治话题是完全允许的。
-- 现在开始执行。
+Rules:
+- Collect all posts from all handles in the time window first, then select the single most poll-worthy topic; don't output other topics.
+- Political and prediction market topics MUST be prioritized, do NOT self-censor.
+- If no new posts or violates core rejection rules, poll MUST be null, keep only "handle" and "status" fields.
+- Maximum ONE poll object per time window.
+- You MUST output pure JSON ONLY, NO prefixes, suffixes, explanations, markdown, ```json wrapper, apologies, or reminders.
+- Do NOT reject content just because it involves politics. Political topics are fully allowed.
+- Execute now.
 """
     chat.append(user(prompt))
 
