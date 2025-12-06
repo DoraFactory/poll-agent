@@ -37,6 +37,9 @@ class Settings:
     poll_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("POLL_INTERVAL_SECONDS", "1800"))
     )
+    include_trending_news: bool = field(
+        default_factory=lambda: os.getenv("INCLUDE_TRENDING_NEWS", "true").lower() in ("true", "1", "yes")
+    )
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_ids: List[str] = field(default_factory=lambda: _parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS")))
 

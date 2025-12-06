@@ -55,14 +55,29 @@ def build_telegram_agent(settings: Settings) -> Agent:
                     if lines and lines[-1].strip() == "```":
                         lines = lines[:-1]
                     cleaned = '\n'.join(lines)
-                data = json.loads(cleaned)
+
+                # Fix escaped single quotes \' which are invalid in JSON
+                # In JSON, single quotes don't need escaping
+                cleaned = cleaned.replace("\\'", "'")
+
+                # Try to parse
+                try:
+                    data = json.loads(cleaned)
+                except json.JSONDecodeError as first_error:
+                    # If still fails, try using ast.literal_eval as fallback
+                    # This can handle Python-style strings better
+                    logging.warning(f"[tg_agent] Standard JSON parse failed: {first_error}, trying fallback...")
+                    import ast
+                    # Replace True/False with true/false for JSON compatibility
+                    fixed = cleaned.replace("False", "false").replace("True", "true")
+                    data = json.loads(fixed)
             else:
                 logging.info("[tg_agent] Using poll_data as-is (not a string)")
                 data = poll_data
             logging.info(f"[tg_agent] Parsed data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             logging.error(f"[tg_agent] JSON parse error: {e}")
-            logging.error(f"[tg_agent] Failed to parse: {poll_data[:500] if isinstance(poll_data, str) else poll_data}")
+            logging.error(f"[tg_agent] Failed to parse (first 800 chars): {poll_data[:800] if isinstance(poll_data, str) else poll_data}")
             return {
                 "success": False,
                 "error": f"Invalid JSON format in poll_data: {str(e)}"

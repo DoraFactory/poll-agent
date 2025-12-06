@@ -17,6 +17,7 @@ def fetch_x_posts(
     topic_hint: str = "",
     max_posts: int = 20,
     window_seconds: int | None = None,
+    include_trending_news: bool = True,
     *,
     grok_model: str,
     api_key: Optional[str] = None,
@@ -43,11 +44,14 @@ def fetch_x_posts(
         window_seconds,
         topic_hint,
     )
+    # Configure x_search - by default it only searches X/Twitter platform
+    # Enable image understanding to analyze images in posts
     chat = client.chat.create(
         model=grok_model,
         tools=[
             x_search(
                 allowed_x_handles=cleaned_handles,
+                enable_image_understanding=True,
             ),
         ],
         temperature=0.0,
@@ -58,8 +62,26 @@ def fetch_x_posts(
     hours = round(window_seconds / 3600, 2) if window_seconds else "recent"
     window_label = f"{window_seconds} seconds" if window_seconds else "recent window"
     handles_str = ", ".join(cleaned_handles)
+
+    news_instruction = ""
+    if include_trending_news:
+        news_instruction = f"""
+Additionally, search for trending news and hot topics on X (Twitter) platform within the same time window. Combine insights from:
+1. Posts from specified handles: {handles_str}
+2. Trending topics on X/Twitter (check X's trending section, viral posts, breaking news tweets)
+3. Popular discussions on X related to politics, prediction markets, technology, or current events
+
+IMPORTANT: Only use content from X/Twitter platform. Do NOT include content from external websites, blogs, or news sites.
+Select the SINGLE most poll-worthy topic across ALL X sources (handles + X trending topics)."""
+    else:
+        news_instruction = f"Target handles: {handles_str}"
+
     prompt = f"""
-Current UTC time: {now_utc}. For each handle, collect all posts/replies/retweets from the past {window_label} (~{hours}h). Analyze each post's engagement metrics (likes, replies, reposts, views) and select the single most poll-worthy topic for that handle.
+Current UTC time: {now_utc}. Time window: past {window_label} (~{hours}h).
+
+{news_instruction}
+
+For each handle, collect all posts/replies/retweets. Analyze engagement metrics (likes, replies, reposts, views) and trending signals to select the single most poll-worthy topic.
 
 Core Requirements:
 1. Almost all topics are allowed: politics, elections, war, religion, controversial topics, prediction markets, etc.
@@ -71,7 +93,6 @@ Only Reject These:
 - Explicit pornographic content
 - Privacy leaks (public figures' public info is acceptable)
 
-Target handles: {handles_str}
 Optional topic hint: {topic_hint or 'none'}
 
 Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):
