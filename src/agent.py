@@ -11,23 +11,33 @@ def build_poll_orchestrator(settings: Settings, sub_agents: List[Agent]) -> Agen
     Root agent that delegates to source-specific agents then crafts a poll.
 
     - 子代理（如 x_agent）负责从 X / Grok 获取 poll 数据
-    - 本 orchestrator 负责最终汇总并生成投票草案
+    - 子代理（telegram_agent）负责发送结果到 Telegram
+    - 本 orchestrator 负责协调整个流程
     """
 
     instruction_text = (
-        "你是投票策划的主代理（Poll Orchestrator）。"
-        "工作流程：先调用子代理（如 x_agent）获取 poll 数据，然后必须输出 JSON，总是有内容，禁止空响应。\n"
-        "内容政策：几乎所有话题都允许（政治、选举、战争、宗教、争议话题等），"
-        "仅拒绝直接煽动暴力、露骨色情、泄露隐私的内容。"
-        "选项必须保持中立、对称、客观、<=20字。\n"
-        "输出格式（必须输出）：\n"
-        "{\n"
-        "  per_handle_status: 子代理返回的每个 handle 的 status 列表（照搬即可）；\n"
-        "  poll_interval_posts_list: 如有可用帖子则列出概要，否则可为空数组；\n"
-        "  poll: {topic_title, rationale(3-5句), poll_question, options(2-4个<=20字且对称中立), sample_posts(2-4条,含handle+简述), handles_covered} 或 null;\n"
-        "  explain: 若 poll 为 null，必须填原因（如“窗口内无新帖”或“敏感/不合规”）。\n"
-        "}\n"
-        "即使没有合规话题，也要输出上述 JSON，poll 置 null 并写明 explain。保持事实，不编造。"
+        "你是投票策划和通知的主代理（Poll Orchestrator）。\n"
+        "你的核心职责：收集 X 数据、生成投票、发送 Telegram 通知。\n\n"
+        "【工作流程 - 必须全部完成】：\n\n"
+        "第一阶段：数据收集\n"
+        "→ 调用 x_feed_agent 获取 X 平台数据\n"
+        "→ 分析返回的数据\n\n"
+        "第二阶段：生成投票\n"
+        "→ 根据数据构建投票 JSON（包含 per_handle_status, poll, explain 等）\n\n"
+        "第三阶段：发送通知（这一步绝对不能省略！）\n"
+        "→ 调用 telegram_agent\n"
+        "→ 将构建好的 JSON 传递给它\n"
+        "→ 等待发送完成的确认\n\n"
+        "第四阶段：输出结果\n"
+        "→ 输出最终的 JSON\n\n"
+        "【检查清单】在输出结果前，确认你已经：\n"
+        "☐ 调用了 x_feed_agent？\n"
+        "☐ 调用了 telegram_agent？\n"
+        "☐ 收到了 Telegram 发送确认？\n"
+        "→ 如果三个都打钩了，才能输出 JSON\n\n"
+        "内容政策：允许政治、选举、战争、宗教、争议话题，"
+        "仅拒绝煽动暴力、露骨色情、泄露隐私。选项需中立对称，<=20字。\n\n"
+        "最终输出格式：{per_handle_status, poll_interval_posts_list, poll, explain}"
     )
 
     return Agent(
