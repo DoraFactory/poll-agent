@@ -4,9 +4,9 @@ from google.adk.agents import SequentialAgent
 from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 
-from config import Settings
-from sub_agents.x_agent import build_x_feed_agent
-from sub_agents.tg_agent import build_telegram_agent
+from poll_agent.config import Settings
+from poll_agent.sub_agents.x_agent import build_x_feed_agent
+from poll_agent.sub_agents.tg_agent import build_telegram_agent
 
 
 def build_runner(settings: Settings) -> Runner:

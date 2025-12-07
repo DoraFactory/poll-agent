@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from config import Settings
-from tools.telegram import send_telegram_message
+from poll_agent.config import Settings
+from poll_agent.tools.telegram import send_telegram_message
 
 
 def build_telegram_agent(settings: Settings) -> Agent:

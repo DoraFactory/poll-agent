@@ -11,9 +11,9 @@ try:
 except Exception:
     _google_llm = None
 
-from config import Settings
-from agent import build_runner
-from tools.utils import render_events, to_content
+from poll_agent.config import Settings
+from poll_agent.agent import build_runner
+from poll_agent.tools.utils import render_events, to_content
 
 
 def main() -> int:

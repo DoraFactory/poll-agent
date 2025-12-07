@@ -4,8 +4,8 @@ import json
 import logging
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
-from config import Settings
-from tools.grok_x_search import fetch_x_posts
+from poll_agent.config import Settings
+from poll_agent.tools.grok_x_search import fetch_x_posts
 
 
 def build_x_feed_agent(settings: Settings) -> Agent:
