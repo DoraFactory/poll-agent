@@ -5,6 +5,9 @@ WORKDIR /app
 # Install uv
 RUN pip install --no-cache-dir uv
 
+# Allow slower networks during dependency downloads
+ENV UV_HTTP_TIMEOUT=120
+
 # Copy project files
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
