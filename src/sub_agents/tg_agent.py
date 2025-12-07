@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from google.adk.agents import Agent
+from google.adk.models.lite_llm import LiteLlm
 from config import Settings
 from tools.telegram import send_telegram_message
 
@@ -94,7 +95,6 @@ def build_telegram_agent(settings: Settings) -> Agent:
             return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
         message_lines = [
-            "━━━━━━━━━━━━━━━━━━━━",
             "🗳️ <b>Poll Agent Update</b>",
             f"⏰ {timestamp}",
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -118,29 +118,26 @@ def build_telegram_agent(settings: Settings) -> Agent:
             poll = data.get("poll")
 
         if poll and poll is not None:
-            # Poll title
-            message_lines.append(f"📊 <b>Topic</b>\n{html_escape(poll.get('topic_title', 'N/A'))}\n")
+            # Title (engaging question) - support both new "title" and old "topic_title"
+            title = poll.get("title") or poll.get("topic_title", "N/A")
+            message_lines.append(f"❓<b>Poll title</b>\n<b>{html_escape(title)}</b>\n")
 
-            # Poll question
-            message_lines.append(f"❓ <b>Poll Question</b>\n{html_escape(poll.get('poll_question', 'N/A'))}\n")
+            # Description (what happened) - support both new "description" and old "poll_question"
+            description = poll.get("description") or poll.get("poll_question", "N/A")
+            message_lines.append(f"📝 <b>Description</b>\n{html_escape(description)}\n")
 
             # Options
             options = poll.get("options", [])
             if options:
-                message_lines.append("📋 <b>Poll Options</b>")
+                message_lines.append("📊 <b>Poll Options</b>")
                 for i, opt in enumerate(options, 1):
                     message_lines.append(f"   {i}️⃣ {html_escape(opt)}")
                 message_lines.append("")
 
-            # Why safe / rationale
-            why_safe = poll.get("why_safe")
-            if why_safe:
-                message_lines.append(f"💡 <b>Explanation</b>\n{html_escape(why_safe)}\n")
-
             # Sample posts
             sample_posts = poll.get("sample_posts", [])
             if sample_posts:
-                message_lines.append("📝 <b>Related Posts</b>")
+                message_lines.append("🔗 <b>Related Posts</b>")
                 for post in sample_posts[:3]:  # Show max 3 posts
                     handle = post.get("handle", "unknown")
                     summary = post.get("summary", "")
@@ -149,6 +146,11 @@ def build_telegram_agent(settings: Settings) -> Agent:
                         message_lines.append(f"   • @{html_escape(handle)}: {html_escape(summary)}")
                         message_lines.append(f"     {html_escape(url)}")
                 message_lines.append("")
+
+            # Why choose this poll - support both new and old field names
+            why_choose = poll.get("why_choose_this_poll") or poll.get("why_safe")
+            if why_choose:
+                message_lines.append(f"🎯 <b>Why Choose This Poll</b>\n{html_escape(why_choose)}\n")
 
             # Show source handle and stats
             if poll_handle:
@@ -193,9 +195,18 @@ def build_telegram_agent(settings: Settings) -> Agent:
         "Note: Send regardless of whether poll data is empty or not. This allows users to confirm the service is running properly."
     )
 
+    # Use LiteLlm to load Grok model
+    # LiteLlm uses OpenAI-compatible format for xAI
+    import os
+    os.environ["XAI_API_KEY"] = settings.xai_api_key
+
+    grok_llm = LiteLlm(
+        model=f"xai/{settings.agent_model}",
+    )
+
     return Agent(
         name="telegram_agent",
-        model=settings.gemini_model,
+        model=grok_llm,
         instruction=instruction_text,
         description="Sends poll results to configured Telegram chats.",
         tools=[send_to_telegram],

@@ -30,19 +30,6 @@ def main() -> int:
     settings = Settings()
     settings.require_keys()
 
-    settings.gemini_model = settings.gemini_model.lstrip("= ").strip()
-    safe_models = [
-        "gemini-2.0-flash",
-        "gemini-2.0-pro",
-    ]
-    if settings.gemini_model not in safe_models:
-        logging.warning(
-            "GEMINI_MODEL '%s' unsupported by ADK registry. Falling back to %s.",
-            settings.gemini_model,
-            safe_models[0],
-        )
-        settings.gemini_model = safe_models[0]
-
     if not settings.default_handles:
         logging.error("X_HANDLES not configured: Please provide at least one handle in .env or environment variables.")
         return 1
@@ -75,10 +62,10 @@ def main() -> int:
     asyncio.run(_ensure_session())
 
     logging.info(
-        "[service] started. handles=%s, interval=%ss, model=%s, grok_model=%s",
+        "[service] started. handles=%s, interval=%ss, agent_model=%s, grok_model=%s",
         settings.default_handles,
         poll_interval,
-        settings.gemini_model,
+        settings.agent_model,
         settings.grok_model,
     )
 

@@ -116,8 +116,8 @@ Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapp
         }}
       ],
       "poll": {{
-        "topic_title": "Example Topic",
-        "poll_question": "Example Question",
+        "title": "Engaging question that captures the topic (e.g., 'Will Europe cut bureaucracy by 2026?')",
+        "description": "2-3 sentences describing what happened. CRITICAL: Use NEUTRAL reporting language - 'According to reports...', 'Sources indicate...', 'There are claims that...', 'It has been reported that...'. DO NOT state unverified claims as facts. Focus on the EVENT itself, NOT who posted it. Do NOT mention account names, handles, engagement metrics (likes/reposts/views), or posting statistics.",
         "options": [
           "Option A (≤20 words, neutral)",
           "Option B (≤20 words, neutral)",
@@ -125,7 +125,7 @@ Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapp
           "Option D (≤20 words, neutral)"
         ],
         "sample_posts": [{{ "handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..." }}],
-        "why_safe": "Explain why this is light/entertainment/tech/lifestyle with no sensitive elements",
+        "why_choose_this_poll": "Explain why THIS topic was selected over others: high engagement, controversy, timeliness, prediction market relevance, etc.",
         "stats_snapshot": {{ "likes": 0, "reposts": 0, "replies": 0, "views": 0 }}
       }}
     }}
@@ -139,6 +139,17 @@ Rules:
 - Maximum ONE poll object per time window.
 - You MUST output pure JSON ONLY, NO prefixes, suffixes, explanations, markdown, ```json wrapper, apologies, or reminders.
 - Do NOT reject content just because it involves politics. Political topics are fully allowed.
+
+Poll Field Requirements:
+- "title": MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
+- "description": Describe the EVENT/NEWS in 2-3 sentences using NEUTRAL, OBJECTIVE language:
+  * Use phrases like: "According to reports...", "Sources claim...", "There are allegations that...", "It has been reported that..."
+  * DO NOT state unverified claims as absolute facts
+  * Focus ONLY on what happened and why it matters
+  * DO NOT mention who posted it, account names, or engagement numbers (likes/reposts/views)
+  * Write like a neutral news agency reporting on claims, not endorsing them
+- "why_choose_this_poll": Explain the competitive advantage of this topic - why it beat other candidates (engagement metrics, controversy level, timeliness, prediction market potential, public interest).
+
 - Execute now.
 """
     chat.append(user(prompt))

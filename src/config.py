@@ -28,10 +28,11 @@ def _parse_chat_ids(raw: str | None) -> List[str]:
 class Settings:
     """Runtime configuration loaded from environment."""
 
-    google_api_key: str = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY", ""))
     xai_api_key: str = field(default_factory=lambda: os.getenv("XAI_API_KEY", ""))
-    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
-    grok_model: str = field(default_factory=lambda: os.getenv("GROK_MODEL", "grok-4-1-fast"))
+    # Model for agents (using Grok via LiteLLM)
+    agent_model: str = field(default_factory=lambda: os.getenv("AGENT_MODEL", "grok-beta"))
+    # Model for Grok x_search
+    grok_model: str = field(default_factory=lambda: os.getenv("GROK_MODEL", "grok-beta"))
     default_handles: List[str] = field(default_factory=lambda: _parse_handles(os.getenv("X_HANDLES")))
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "agents"))
     poll_interval_seconds: int = field(
@@ -44,7 +45,5 @@ class Settings:
     telegram_chat_ids: List[str] = field(default_factory=lambda: _parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS")))
 
     def require_keys(self) -> None:
-        if not self.google_api_key:
-            raise EnvironmentError("Missing GOOGLE_API_KEY in environment or .env file.")
         if not self.xai_api_key:
             raise EnvironmentError("Missing XAI_API_KEY in environment or .env file.")
