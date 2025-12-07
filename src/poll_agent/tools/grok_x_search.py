@@ -86,7 +86,7 @@ For each handle, collect all posts/replies/retweets. Analyze engagement metrics 
 Core Requirements:
 1. Almost all topics are allowed: politics, elections, war, religion, controversial topics, prediction markets, etc.
 2. Technology, economy, society, entertainment, sports, culture and all mainstream topics are allowed
-3. Maintain objectivity and neutrality: titles and options must be balanced with no obvious bias, options ≤20 words, max 5 options.
+3. Maintain objectivity and neutrality: titles and options must be balanced with no obvious bias, options ≤20 words, max 3 options (prefer 2-3 options over more).
 
 Only Reject These:
 - Direct incitement to violence/harm
@@ -121,8 +121,7 @@ Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapp
         "options": [
           "Option A (≤20 words, neutral)",
           "Option B (≤20 words, neutral)",
-          "Option C (≤20 words, neutral)",
-          "Option D (≤20 words, neutral)"
+          "Option C (≤20 words, neutral) - OPTIONAL, prefer 2 options when possible"
         ],
         "sample_posts": [{{ "handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..." }}],
         "why_choose_this_poll": "Explain why THIS topic was selected over others: high engagement, controversy, timeliness, prediction market relevance, etc.",
