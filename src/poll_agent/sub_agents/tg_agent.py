@@ -100,22 +100,17 @@ def build_telegram_agent(settings: Settings) -> Agent:
             "━━━━━━━━━━━━━━━━━━━━\n"
         ]
 
-        # Check if there's actual poll data
-        # Look for poll in per_handle array (new format) or top level (old format)
+        # Check if there's actual poll data (poll is now at top level)
         per_handle = data.get("per_handle", [])
-        poll = None
+        poll = data.get("poll")
+
+        # Find which handle contributed the poll (for display purposes)
         poll_handle = None
-
-        # Try to find poll in per_handle array
-        for item in per_handle:
-            if item.get("poll"):
-                poll = item.get("poll")
-                poll_handle = item.get("handle")
-                break
-
-        # Fallback to old format
-        if not poll:
-            poll = data.get("poll")
+        if poll:
+            for item in per_handle:
+                if item.get("status") == "poll_topic_found":
+                    poll_handle = item.get("handle")
+                    break
 
         if poll and poll is not None:
             # Title (engaging question) - support both new "title" and old "topic_title"
