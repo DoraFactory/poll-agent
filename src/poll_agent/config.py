@@ -44,6 +44,11 @@ class Settings:
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_ids: List[str] = field(default_factory=lambda: _parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS")))
 
+    # World MACI API settings
+    world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))
+    world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
+    world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", "https://vota-test.dorafactory.org/round/"))
+
     def require_keys(self) -> None:
         if not self.xai_api_key:
             raise EnvironmentError("Missing XAI_API_KEY in environment or .env file.")

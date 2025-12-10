@@ -6,7 +6,7 @@ from google.adk.sessions.in_memory_session_service import InMemorySessionService
 
 from poll_agent.config import Settings
 from poll_agent.sub_agents.x_agent import build_x_feed_agent
-from poll_agent.sub_agents.tg_agent import build_telegram_agent
+from poll_agent.sub_agents.publish_agent import build_publish_agent
 
 
 def build_runner(settings: Settings) -> Runner:
@@ -15,7 +15,7 @@ def build_runner(settings: Settings) -> Runner:
 
     Pipeline:
     1. x_feed_agent: Fetches recent posts from X handles using Grok
-    2. telegram_agent: Sends the generated poll data to Telegram
+    2. publish_agent: Publishes the generated poll data to configured platforms
 
     Returns:
         Runner: Configured ADK Runner ready to process requests
@@ -23,13 +23,13 @@ def build_runner(settings: Settings) -> Runner:
 
     # Build sub-agents
     x_agent = build_x_feed_agent(settings)
-    telegram_agent = build_telegram_agent(settings)
+    publish_agent = build_publish_agent(settings)
 
     # Create sequential orchestrator
     description_text = (
-        "A two-step pipeline for poll generation and notification:\n"
+        "A two-step pipeline for poll generation and publication:\n"
         "1. x_feed_agent: Fetches recent posts from X handles using Grok\n"
-        "2. telegram_agent: Sends the generated poll data to Telegram\n\n"
+        "2. publish_agent: Publishes the generated poll data to configured platforms\n\n"
         "Output the final poll JSON in the format: "
         "{per_handle: [...], poll_interval_posts_list: [...], poll: {...} or null, explain: ...}\n\n"
         "Content policy: Allow politics, elections, war, religion, controversial topics. "
@@ -40,7 +40,7 @@ def build_runner(settings: Settings) -> Runner:
     orchestrator = SequentialAgent(
         name="poll_orchestrator",
         description=description_text,
-        sub_agents=[x_agent, telegram_agent],
+        sub_agents=[x_agent, publish_agent],
     )
 
     # Create session service
