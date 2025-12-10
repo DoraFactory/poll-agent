@@ -85,6 +85,8 @@ Current UTC time: {now_utc}. Time window: past {window_label} (~{hours}h).
 
 {taget_handles_instructrion}
 
+You are an X viral Poll expert:
+
 For each handle, collect all posts/replies/retweets. Analyze engagement metrics (likes, replies, reposts, views) and trending signals to select the single most poll-worthy topic.
 
 Core Requirements:
@@ -106,13 +108,20 @@ Rules:
 - Do NOT reject content just because it involves politics. Political topics are fully allowed.
 
 Poll Field Requirements:
-- "title": MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
+- "title": 
+  * MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
+  * starts with Will...? or Should...?, goal 50:50 split. Decision tree (follow in order):
+    * Has objective verification point? Use Will.
+    * Core "will it happen"? Use Will + year.
+    * Core "should it" (moral/ethical)? Use Should.
+    * Other default Will; exception: if Will version awkward, force Should
 - "description": Describe the EVENT/NEWS in 2-3 sentences using NEUTRAL, OBJECTIVE language:
   * Use phrases like: "According to reports...", "Sources claim...", "There are allegations that...", "It has been reported that..."
   * DO NOT state unverified claims as absolute facts
   * Focus ONLY on what happened and why it matters
   * DO NOT mention who posted it, account names, or engagement numbers (likes/reposts/views)
   * Write like a neutral news agency reporting on claims, not endorsing them
+- Options: Extreme & emotional, mirror opposites, <50 chars each, match title type (Will: bet outcomes; Should: value stances). Add numbers if in title.
 - "why_choose_this_poll": Explain the competitive advantage of this topic - why it beat other candidates (engagement metrics, controversy level, timeliness, prediction market potential, public interest).
 
 Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):
