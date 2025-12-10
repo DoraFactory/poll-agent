@@ -7,12 +7,14 @@ from poll_agent.config import Settings
 from poll_agent.tools.telegram import send_telegram_message
 
 
-def build_telegram_agent(settings: Settings) -> Agent:
+def build_publish_agent(settings: Settings) -> Agent:
     """
-    Agent dedicated to sending poll results to Telegram.
+    Agent dedicated to publishing poll results to various platforms.
+    Currently supports: World Maci api and Telegram
+    Future: Discord, Slack, Twitter, etc.
 
     - send_to_telegram: Wraps send_telegram_message to send poll results to Telegram
-    - Agent: Uses Gemini model as Telegram message sending agent
+    - Agent: Uses Grok model as poll publishing agent
     """
 
     def send_to_telegram(poll_data: str) -> dict:
@@ -26,8 +28,8 @@ def build_telegram_agent(settings: Settings) -> Agent:
             dict: Dictionary containing send result
         """
         import logging
-        logging.info("[tg_agent] send_to_telegram tool called")
-        logging.info(f"[tg_agent] poll_data type: {type(poll_data)}, length: {len(str(poll_data)) if poll_data else 0}")
+        logging.info("[publish_agent] send_to_telegram tool called")
+        logging.info(f"[publish_agent] poll_data type: {type(poll_data)}, length: {len(str(poll_data)) if poll_data else 0}")
 
         if not settings.telegram_token:
             return {
@@ -44,7 +46,7 @@ def build_telegram_agent(settings: Settings) -> Agent:
         # Parse poll_data if it's a string
         try:
             if isinstance(poll_data, str):
-                logging.info("[tg_agent] Parsing poll_data from string")
+                logging.info("[publish_agent] Parsing poll_data from string")
                 # Strip markdown code blocks (```json ... ``` or ``` ... ```)
                 cleaned = poll_data.strip()
                 if cleaned.startswith("```"):
@@ -67,18 +69,18 @@ def build_telegram_agent(settings: Settings) -> Agent:
                 except json.JSONDecodeError as first_error:
                     # If still fails, try using ast.literal_eval as fallback
                     # This can handle Python-style strings better
-                    logging.warning(f"[tg_agent] Standard JSON parse failed: {first_error}, trying fallback...")
+                    logging.warning(f"[publish_agent] Standard JSON parse failed: {first_error}, trying fallback...")
                     import ast
                     # Replace True/False with true/false for JSON compatibility
                     fixed = cleaned.replace("False", "false").replace("True", "true")
                     data = json.loads(fixed)
             else:
-                logging.info("[tg_agent] Using poll_data as-is (not a string)")
+                logging.info("[publish_agent] Using poll_data as-is (not a string)")
                 data = poll_data
-            logging.info(f"[tg_agent] Parsed data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+            logging.info(f"[publish_agent] Parsed data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
         except (json.JSONDecodeError, ValueError) as e:
-            logging.error(f"[tg_agent] JSON parse error: {e}")
-            logging.error(f"[tg_agent] Failed to parse (first 800 chars): {poll_data[:800] if isinstance(poll_data, str) else poll_data}")
+            logging.error(f"[publish_agent] JSON parse error: {e}")
+            logging.error(f"[publish_agent] Failed to parse (first 800 chars): {poll_data[:800] if isinstance(poll_data, str) else poll_data}")
             return {
                 "success": False,
                 "error": f"Invalid JSON format in poll_data: {str(e)}"
@@ -169,8 +171,8 @@ def build_telegram_agent(settings: Settings) -> Agent:
         message_lines.append("\n━━━━━━━━━━━━━━━━━━━━")
         message = "\n".join(message_lines)
 
-        logging.info(f"[tg_agent] Formatted message, length: {len(message)}")
-        logging.info(f"[tg_agent] Calling send_telegram_message...")
+        logging.info(f"[publish_agent] Formatted message, length: {len(message)}")
+        logging.info(f"[publish_agent] Calling send_telegram_message...")
 
         result = send_telegram_message(
             message=message,
@@ -178,11 +180,11 @@ def build_telegram_agent(settings: Settings) -> Agent:
             chat_ids=settings.telegram_chat_ids,
         )
 
-        logging.info(f"[tg_agent] send_telegram_message returned: {result}")
+        logging.info(f"[publish_agent] send_telegram_message returned: {result}")
         return result
 
     instruction_text = (
-        "You are the telegram_agent responsible for sending poll results to Telegram.\n\n"
+        "You are the publish_agent responsible for publishing poll results to various platforms.\n\n"
         "Tasks:\n"
         "1. Receive poll data from the main agent (may be JSON string or object)\n"
         "2. Immediately call the send_to_telegram tool to send the data\n"
@@ -200,9 +202,9 @@ def build_telegram_agent(settings: Settings) -> Agent:
     )
 
     return Agent(
-        name="telegram_agent",
+        name="publish_agent",
         model=grok_llm,
         instruction=instruction_text,
-        description="Sends poll results to configured Telegram chats.",
+        description="Publishes poll results to configured platforms (Telegram, etc.).",
         tools=[send_to_telegram],
     )

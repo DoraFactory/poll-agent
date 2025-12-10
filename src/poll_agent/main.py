@@ -42,9 +42,9 @@ def main() -> int:
         "Workflow:\n"
         "1. Call x_feed_agent to fetch data (via grok_recent_posts)\n"
         "2. Generate poll JSON\n"
-        "3. MUST call telegram_agent to send results to Telegram\n"
+        "3. MUST call publish_agent to publish results to configured platforms\n"
         "4. Output final JSON\n"
-        "Note: Even if there are no new posts, a Telegram notification must be sent to confirm the service is running properly."
+        "Note: Even if there are no new posts, a notification must be sent to confirm the service is running properly."
     )
 
     runner = build_runner(settings)
@@ -80,9 +80,9 @@ def main() -> int:
                 f"Time window: Posts from the last {poll_interval} seconds.\n\n"
                 "【Required Two Calls】:\n"
                 "1. Call x_feed_agent (transfer_to_agent) to fetch data\n"
-                "2. Call telegram_agent (transfer_to_agent) to send results\n\n"
+                "2. Call publish_agent (transfer_to_agent) to publish results\n\n"
                 "【IMPORTANT】Both agents MUST be called! Do not end after only calling x_feed_agent.\n"
-                "Telegram sending must be completed before outputting the final JSON."
+                "Publishing must be completed before outputting the final JSON."
             )
 
             logging.info("calling runner.run")
