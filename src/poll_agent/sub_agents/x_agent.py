@@ -53,7 +53,7 @@ def build_x_feed_agent(settings: Settings) -> Agent:
     return Agent(
         name="x_feed_agent",
         model=grok_llm,
-        include_contents=None,
+        include_contents='none',
         instruction=instruction_text,
         description="Fetches recent posts from configured X handles using Grok search.",
         tools=[grok_recent_posts],
