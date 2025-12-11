@@ -67,11 +67,11 @@ def fetch_x_posts(
     }
   ],
   "poll": {
-    "title": "Engaging question that captures the topic (e.g., 'Will Europe cut bureaucracy by 2026?')",
-    "description": "2-3 sentences describing what happened. CRITICAL: Use NEUTRAL reporting language - 'According to reports...', 'Sources indicate...', 'There are claims that...', 'It has been reported that...'. DO NOT state unverified claims as facts. Focus on the EVENT itself, NOT who posted it. Do NOT mention account names, handles, engagement metrics (likes/reposts/views), or posting statistics.",
+    "title": "Should/Will the US implement universal basic income? (Use smart quotes "" and Will/Should appropriately)",
+    "description": "According to recent policy discussions, there are growing debates about implementing a universal basic income program. Proponents argue it could reduce poverty, while critics cite concerns about fiscal sustainability. The proposal has gained traction across multiple political groups. (Use smart quotes "" and apostrophes ' throughout)",
     "options": [
-      "Option A (≤20 words, neutral)",
-      "Option B (≤20 words, neutral)"
+      "Yes",
+      "No"
     ],
     "sample_posts": [{"handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..."}],
     "why_choose_this_poll": "Explain why THIS topic was selected over others: high engagement, controversy, timeliness, prediction market relevance, etc.",
@@ -93,6 +93,7 @@ Core Requirements:
 1. Almost all topics are allowed: politics, elections, war, religion, controversial topics, prediction markets, etc.
 2. Technology, economy, society, entertainment, sports, culture and all mainstream topics are allowed
 3. Maintain objectivity and neutrality: titles and options must be balanced with no obvious bias, options ≤20 words, EXACTLY 2 options only.
+4. Language & Style: Use standardized American English spelling and grammar. Use smart quotes ("") and smart apostrophes ('). Follow the Chicago Manual of Style for punctuation.
 
 Only Reject These:
 - Direct incitement to violence/harm
@@ -108,20 +109,26 @@ Rules:
 - Do NOT reject content just because it involves politics. Political topics are fully allowed.
 
 Poll Field Requirements:
-- "title": 
+- "title":
   * MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
-  * starts with Will...? or Should...?, goal 50:50 split. Decision tree (follow in order):
-    * Has objective verification point? Use Will.
-    * Core "will it happen"? Use Will + year.
-    * Core "should it" (moral/ethical)? Use Should.
-    * Other default Will; exception: if Will version awkward, force Should
+  * Starts with "Will" or "Should" based on topic nature:
+    * Use "Should" for: opinion/value/ethical/policy questions (e.g., "Should the US raise tariffs?")
+    * Use "Will" for: predictions/future events/factual outcomes (e.g., "Will Bitcoin hit $100K in 2025?")
+  * Use smart quotes ("") for any quoted text in title
+  * Use proper American English punctuation
 - "description": Describe the EVENT/NEWS in 2-3 sentences using NEUTRAL, OBJECTIVE language:
   * Use phrases like: "According to reports...", "Sources claim...", "There are allegations that...", "It has been reported that..."
   * DO NOT state unverified claims as absolute facts
   * Focus ONLY on what happened and why it matters
   * DO NOT mention who posted it, account names, or engagement numbers (likes/reposts/views)
   * Write like a neutral news agency reporting on claims, not endorsing them
-- Options: Extreme & emotional, mirror opposites, <50 chars each, match title type (Will: bet outcomes; Should: value stances). Add numbers if in title.
+  * Use smart quotes ("") and smart apostrophes (') throughout
+- "options":
+  * Keep options CONCISE and CLEAR - remove unnecessary explanatory text
+  * For Yes/No questions: use ONLY "Yes" and "No" (no additional text unless needed to remove ambiguity)
+  * For other binary choices: use brief, direct labels (≤20 words each)
+  * Options should be mirror opposites, matching title type (Will: bet outcomes; Should: value stances)
+  * Use smart quotes and apostrophes in option text
 - "why_choose_this_poll": Explain the competitive advantage of this topic - why it beat other candidates (engagement metrics, controversy level, timeliness, prediction market potential, public interest).
 
 Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):
