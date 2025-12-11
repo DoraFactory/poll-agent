@@ -474,6 +474,7 @@ def build_publish_agent(settings: Settings) -> Agent:
     return Agent(
         name="publish_agent",
         model=grok_llm,
+        include_contents=None,
         instruction=instruction_text,
         description="Publishes poll results to configured platforms (World MACI API + Telegram).",
         tools=[push_to_chain, send_to_telegram],
