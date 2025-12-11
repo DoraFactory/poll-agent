@@ -6,17 +6,18 @@ from google.adk.models.lite_llm import LiteLlm
 from poll_agent.config import Settings
 from poll_agent.tools.telegram import send_telegram_message
 from poll_agent.tools.push_chain import push_poll_to_chain
+from poll_agent.tools.push_x import push_poll_to_x
 
 
 def build_publish_agent(settings: Settings) -> Agent:
     """
     Agent dedicated to publishing poll results to various platforms.
-    Currently supports: World MACI API and Telegram
-    Future: Discord, Slack, Twitter, etc.
+    Currently supports: World MACI API, Twitter (X), and Telegram
 
     Tools:
     1. push_to_chain: Push poll to World MACI API, returns contract address
-    2. send_to_telegram: Send poll (with optional contract address) to Telegram
+    2. push_to_x: Post poll announcement to Twitter/X with vote URL
+    3. send_to_telegram: Send poll (with optional contract address and tweet URL) to Telegram
 
     - Agent: Uses Grok model as poll publishing agent
     """
@@ -149,17 +150,151 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         return result
 
-    def send_to_telegram(poll_data: str, contract_address: str = "", chain_push_error: str = "") -> dict:
+    def push_to_x(poll_data: str, vote_url: str) -> dict:
+        """
+        Post poll announcement to X (Twitter) using Twitter API v2.
+
+        Purpose:
+            Publish poll notification to Twitter to increase visibility and engagement.
+            Posts a tweet with poll title, options, and voting link.
+
+        When to call:
+            - Call AFTER push_to_chain succeeds and vote_url is constructed
+            - Call BEFORE send_to_telegram so tweet URL can be included in Telegram message
+            - Skip if Twitter credentials are not configured
+
+        Args:
+            poll_data (str): JSON string containing complete poll data structure:
+                {
+                    "per_handle": [...],
+                    "poll": {
+                        "title": "Poll question",
+                        "description": "Poll description",
+                        "options": ["Option 1", "Option 2"],
+                        ...
+                    }
+                }
+
+            vote_url (str): Complete voting URL (world_maci_vote_url + contract_address)
+                Example: "https://vota-test.dorafactory.org/round/0xABC123..."
+
+        Returns:
+            dict: Result of Twitter post operation
+                On success:
+                {
+                    "success": true,
+                    "tweet_id": "1234567890",
+                    "tweet_url": "https://twitter.com/i/web/status/1234567890"
+                }
+                On failure:
+                {
+                    "success": false,
+                    "error": "Error message"
+                }
+
+        Success behavior:
+            - Extract tweet_url from result
+            - Pass it to send_to_telegram tool for display
+            - Log success message
+
+        Failure behavior:
+            - Log error message
+            - Continue with send_to_telegram anyway (without tweet URL)
+            - Include error in Telegram message for visibility
+        """
+        import logging
+        logging.info("[publish_agent] push_to_x tool called")
+        logging.info(f"[publish_agent] Input: poll_data length={len(poll_data) if poll_data else 0}")
+        logging.info(f"[publish_agent] Input: vote_url={vote_url}")
+
+        # Step 1: Parse poll_data JSON
+        logging.info("[publish_agent] Step 1: Parsing poll_data JSON")
+        try:
+            if isinstance(poll_data, str):
+                cleaned = poll_data.strip()
+                if cleaned.startswith("```"):
+                    lines = cleaned.split('\n')
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    cleaned = '\n'.join(lines)
+                cleaned = cleaned.replace("\\'", "'")
+                data = json.loads(cleaned)
+                logging.info("[publish_agent] JSON parsed successfully")
+            else:
+                data = poll_data
+                logging.info("[publish_agent] Using poll_data as dict directly")
+        except (json.JSONDecodeError, ValueError) as e:
+            error_msg = f"Invalid JSON format: {str(e)}"
+            logging.error(f"[publish_agent] FAILURE: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+        # Step 2: Extract poll from data
+        logging.info("[publish_agent] Step 2: Extracting poll from data")
+        poll = data.get("poll")
+        if not poll:
+            error_msg = "No poll found in data"
+            logging.warning(f"[publish_agent] FAILURE: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+        # Step 3: Validate poll fields
+        logging.info("[publish_agent] Step 3: Validating poll fields")
+        title = poll.get("title", "")
+        description = poll.get("description", "")
+        options = poll.get("options", [])
+
+        if not title or not options:
+            error_msg = f"Poll missing required fields: title={bool(title)}, options={len(options)}"
+            logging.error(f"[publish_agent] FAILURE: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+        logging.info(f"[publish_agent] Poll validated: title='{title}', options={len(options)}")
+
+        # Step 4: Call Twitter API
+        logging.info("[publish_agent] Step 4: Calling Twitter API to post poll announcement")
+        result = push_poll_to_x(
+            poll_title=title,
+            poll_description=description,
+            voting_options=options,
+            vote_url=vote_url,
+            api_key=settings.twitter_api_key,
+            api_secret=settings.twitter_api_secret,
+            access_token=settings.twitter_access_token,
+            access_token_secret=settings.twitter_access_token_secret,
+        )
+
+        if result.get("success"):
+            tweet_url = result.get("tweet_url", "")
+            logging.info(f"[publish_agent] SUCCESS: Poll posted to Twitter at {tweet_url}")
+            logging.info("[publish_agent] Action: Agent should extract tweet_url and pass it to send_to_telegram")
+        else:
+            error = result.get("error", "Unknown error")
+            logging.error(f"[publish_agent] FAILURE: Twitter post failed - {error}")
+            logging.error("[publish_agent] Action: Agent should still call send_to_telegram (without tweet_url)")
+
+        return result
+
+    def send_to_telegram(poll_data: str, contract_address: str = "", chain_push_error: str = "", tweet_url: str = "", twitter_push_error: str = "") -> dict:
         """
         Send formatted poll notification to configured Telegram chats.
 
         Purpose:
             Format poll data into HTML message and send to all configured Telegram channels.
-            Include on-chain contract address if available.
+            Include on-chain contract address, Twitter post link if available.
 
         When to call:
-            - Call AFTER push_to_chain (if poll exists and chain push attempted)
-            - Call ALWAYS, even if push_to_chain failed or was skipped
+            - Call AFTER push_to_chain and push_to_x (if poll exists)
+            - Call ALWAYS, even if push_to_chain or push_to_x failed or were skipped
             - This is the final step - always execute to notify users
 
         Args:
@@ -188,6 +323,16 @@ def build_publish_agent(settings: Settings) -> Agent:
             chain_push_error (str, optional): Error message if chain push failed.
                 - If provided: Display failure message in Telegram
                 - If empty and contract_address empty: Chain push was skipped (no API configured)
+                - Default: ""
+
+            tweet_url (str, optional): Twitter post URL from push_to_x.
+                - If provided: Display clickable link to Twitter post
+                - If empty: Check twitter_push_error to determine status
+                - Default: ""
+
+            twitter_push_error (str, optional): Error message if Twitter push failed.
+                - If provided: Display failure message in Telegram
+                - If empty and tweet_url empty: Twitter push was skipped (no credentials configured)
                 - Default: ""
 
         Returns:
@@ -238,6 +383,13 @@ def build_publish_agent(settings: Settings) -> Agent:
             logging.info(f"[publish_agent] Input: chain_push_error={chain_push_error}")
         else:
             logging.info("[publish_agent] Input: No contract_address or error (chain push skipped)")
+
+        if tweet_url:
+            logging.info(f"[publish_agent] Input: tweet_url={tweet_url}")
+        elif twitter_push_error:
+            logging.info(f"[publish_agent] Input: twitter_push_error={twitter_push_error}")
+        else:
+            logging.info("[publish_agent] Input: No tweet_url or error (Twitter push skipped)")
 
         # Step 1: Validate Telegram configuration
         logging.info("[publish_agent] Step 1: Validating Telegram configuration")
@@ -404,6 +556,21 @@ def build_publish_agent(settings: Settings) -> Agent:
                 # Chain push not configured or skipped
                 message_lines.append(f"⛓️ <b>Publish Poll</b>: ⏭️ Skipped")
                 message_lines.append(f"   <i>(World MACI API not configured)</i>")
+
+            # Show Twitter status
+            message_lines.append("")  # Empty line for separation
+            if tweet_url:
+                # Twitter push succeeded
+                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ✅ Success")
+                message_lines.append(f"   <a href='{tweet_url}'>View Tweet</a>")
+            elif twitter_push_error:
+                # Twitter push attempted but failed
+                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ❌ Failed")
+                message_lines.append(f"   <b>Error</b>: {html_escape(twitter_push_error)}")
+            else:
+                # Twitter push not configured or skipped
+                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ⏭️ Skipped")
+                message_lines.append(f"   <i>(Twitter API credentials not configured)</i>")
         else:
             # No poll generated
             explain = data.get("explain", "No suitable poll topic")
@@ -448,18 +615,24 @@ def build_publish_agent(settings: Settings) -> Agent:
         "1. Receive poll data from the main agent (may be JSON string or object)\n"
         "2. If there is a valid poll:\n"
         "   a. Call push_to_chain(poll_data) to deploy poll on-chain\n"
-        "   b. Check the result:\n"
         "      - If success=true: Extract contract_address from result\n"
         "      - If success=false: Extract error message from result\n"
-        "   c. Call send_to_telegram with appropriate parameters:\n"
-        "      - Success: send_to_telegram(poll_data, contract_address=<address>)\n"
-        "      - Failure: send_to_telegram(poll_data, chain_push_error=<error>)\n"
+        "   b. If push_to_chain succeeded (has contract_address):\n"
+        "      - Construct vote_url = world_maci_vote_url + contract_address\n"
+        "      - Call push_to_x(poll_data, vote_url) to post on Twitter\n"
+        "      - If success=true: Extract tweet_url from result\n"
+        "      - If success=false: Extract error message from result\n"
+        "   c. Call send_to_telegram with all collected parameters:\n"
+        "      - Full success: send_to_telegram(poll_data, contract_address=<addr>, tweet_url=<url>)\n"
+        "      - Chain only: send_to_telegram(poll_data, contract_address=<addr>, twitter_push_error=<error>)\n"
+        "      - Chain failed: send_to_telegram(poll_data, chain_push_error=<error>)\n"
         "3. If no valid poll, just call send_to_telegram(poll_data)\n"
         "4. Output the final result\n\n"
         "IMPORTANT:\n"
-        "- ALWAYS call send_to_telegram regardless of chain push result\n"
-        "- Pass chain push status to send_to_telegram so users know what happened\n"
-        "- If chain push fails, pass the error message as chain_push_error parameter"
+        "- ALWAYS call send_to_telegram regardless of push_to_chain or push_to_x result\n"
+        "- Only call push_to_x if push_to_chain succeeded (need vote_url)\n"
+        "- Pass all status information to send_to_telegram so users see what happened\n"
+        "- Don't construct vote_url yourself - it's world_maci_vote_url + '/' + contract_address"
     )
 
     # Use LiteLlm to load Grok model
@@ -476,6 +649,6 @@ def build_publish_agent(settings: Settings) -> Agent:
         model=grok_llm,
         include_contents='none',
         instruction=instruction_text,
-        description="Publishes poll results to configured platforms (World MACI API + Telegram).",
-        tools=[push_to_chain, send_to_telegram],
+        description="Publishes poll results to configured platforms (World MACI API + Twitter/X + Telegram).",
+        tools=[push_to_chain, push_to_x, send_to_telegram],
     )

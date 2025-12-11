@@ -49,6 +49,12 @@ class Settings:
     world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
     world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", "https://vota-test.dorafactory.org/round/"))
 
+    # Twitter API v2 settings (OAuth 1.0a)
+    twitter_api_key: str = field(default_factory=lambda: os.getenv("TWITTER_API_KEY", ""))
+    twitter_api_secret: str = field(default_factory=lambda: os.getenv("TWITTER_API_SECRET", ""))
+    twitter_access_token: str = field(default_factory=lambda: os.getenv("TWITTER_ACCESS_TOKEN", ""))
+    twitter_access_token_secret: str = field(default_factory=lambda: os.getenv("TWITTER_ACCESS_TOKEN_SECRET", ""))
+
     def require_keys(self) -> None:
         if not self.xai_api_key:
             raise EnvironmentError("Missing XAI_API_KEY in environment or .env file.")
