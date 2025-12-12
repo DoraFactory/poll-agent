@@ -262,11 +262,26 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         # Step 4: Call Twitter API
         logging.info("[publish_agent] Step 4: Calling Twitter API to post poll announcement")
+        vote_base_url = settings.world_maci_vote_url
+        if not vote_base_url.endswith("/"):
+            vote_base_url += "/"
+
+        if vote_url.startswith(vote_base_url):
+            normalized_vote_url = vote_url
+        else:
+            # Enforce WORLD_MACI_VOTE_URL prefix; take last path segment as contract address
+            contract_part = (vote_url.rsplit("/", 1)[-1] if vote_url else "").strip()
+            normalized_vote_url = f"{vote_base_url}{contract_part}" if contract_part else vote_base_url
+            logging.info(
+                "[publish_agent] Normalized vote_url to use WORLD_MACI_VOTE_URL prefix: %s",
+                normalized_vote_url,
+            )
+
         result = push_poll_to_x(
             poll_title=title,
             poll_description=description,
             voting_options=options,
-            vote_url=vote_url,
+            vote_url=normalized_vote_url,
             api_key=settings.twitter_api_key,
             api_secret=settings.twitter_api_secret,
             access_token=settings.twitter_access_token,
