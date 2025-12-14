@@ -70,11 +70,10 @@ def build_publish_agent(settings: Settings) -> Agent:
             - User should see error in logs but Telegram message still sent
         """
         import logging
-        logging.info("[publish_agent] push_to_chain tool called")
-        logging.info(f"[publish_agent] Input: poll_data length={len(poll_data) if poll_data else 0}")
+        log_prefix = "[agent=publish_agent][tool=push_to_chain]"
+        logging.info("%s call len=%s", log_prefix, len(poll_data) if poll_data else 0)
 
-        # Step 1: Parse poll_data JSON
-        logging.info("[publish_agent] Step 1: Parsing poll_data JSON")
+        # Parse poll_data JSON
         try:
             if isinstance(poll_data, str):
                 cleaned = poll_data.strip()
@@ -87,50 +86,42 @@ def build_publish_agent(settings: Settings) -> Agent:
                     cleaned = '\n'.join(lines)
                 cleaned = cleaned.replace("\\'", "'")
                 data = json.loads(cleaned)
-                logging.info("[publish_agent] JSON parsed successfully")
             else:
                 data = poll_data
-                logging.info("[publish_agent] Using poll_data as dict directly")
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"Invalid JSON format: {str(e)}"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
-            logging.error("[publish_agent] Action: Returning failure, agent should NOT call send_to_telegram with invalid data")
+            logging.error("%s parse_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        # Step 2: Extract poll from data
-        logging.info("[publish_agent] Step 2: Extracting poll from data")
+        # Extract poll from data
         poll = data.get("poll")
         if not poll:
             error_msg = "No poll found in data"
-            logging.warning(f"[publish_agent] FAILURE: {error_msg}")
-            logging.warning("[publish_agent] Action: Returning failure, agent should call send_to_telegram without contract_address")
+            logging.warning("%s %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        # Step 3: Validate poll fields
-        logging.info("[publish_agent] Step 3: Validating poll fields")
+        # Validate poll fields
         title = poll.get("title", "")
         description = poll.get("description", "")
         options = poll.get("options", [])
 
         if not title or not options:
             error_msg = f"Poll missing required fields: title={bool(title)}, options={len(options)}"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
-            logging.error("[publish_agent] Action: Returning failure, agent should call send_to_telegram without contract_address")
+            logging.error("%s validation_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        logging.info(f"[publish_agent] Poll validated: title='{title}', options={len(options)}")
+        logging.info("%s publish start title='%s' options=%s", log_prefix, title, len(options))
 
-        # Step 4: Call World MACI API
-        logging.info("[publish_agent] Step 4: Calling World MACI API to deploy poll on-chain")
+        # Call World MACI API
         result = push_poll_to_chain(
             poll_title=title,
             poll_description=description,
@@ -141,12 +132,10 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         if result.get("success"):
             contract_address = result.get("contract_address", "")
-            logging.info(f"[publish_agent] SUCCESS: Poll deployed to chain at {contract_address}")
-            logging.info("[publish_agent] Action: Agent should extract contract_address and pass it to send_to_telegram")
+            logging.info("%s success contract=%s", log_prefix, contract_address)
         else:
             error = result.get("error", "Unknown error")
-            logging.error(f"[publish_agent] FAILURE: Chain push failed - {error}")
-            logging.error("[publish_agent] Action: Agent should still call send_to_telegram (without contract_address)")
+            logging.error("%s failure: %s", log_prefix, error)
 
         return result
 
@@ -203,12 +192,10 @@ def build_publish_agent(settings: Settings) -> Agent:
             - Include error in Telegram message for visibility
         """
         import logging
-        logging.info("[publish_agent] push_to_x tool called")
-        logging.info(f"[publish_agent] Input: poll_data length={len(poll_data) if poll_data else 0}")
-        logging.info(f"[publish_agent] Input: vote_url={vote_url}")
+        log_prefix = "[agent=publish_agent][tool=push_to_x]"
+        logging.info("%s call len=%s vote_url=%s", log_prefix, len(poll_data) if poll_data else 0, vote_url)
 
-        # Step 1: Parse poll_data JSON
-        logging.info("[publish_agent] Step 1: Parsing poll_data JSON")
+        # Parse poll_data JSON
         try:
             if isinstance(poll_data, str):
                 cleaned = poll_data.strip()
@@ -221,47 +208,41 @@ def build_publish_agent(settings: Settings) -> Agent:
                     cleaned = '\n'.join(lines)
                 cleaned = cleaned.replace("\\'", "'")
                 data = json.loads(cleaned)
-                logging.info("[publish_agent] JSON parsed successfully")
             else:
                 data = poll_data
-                logging.info("[publish_agent] Using poll_data as dict directly")
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"Invalid JSON format: {str(e)}"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
+            logging.error("%s parse_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        # Step 2: Extract poll from data
-        logging.info("[publish_agent] Step 2: Extracting poll from data")
+        # Extract poll from data
         poll = data.get("poll")
         if not poll:
             error_msg = "No poll found in data"
-            logging.warning(f"[publish_agent] FAILURE: {error_msg}")
+            logging.warning("%s %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        # Step 3: Validate poll fields
-        logging.info("[publish_agent] Step 3: Validating poll fields")
+        # Validate poll fields
         title = poll.get("title", "")
         description = poll.get("description", "")
         options = poll.get("options", [])
 
         if not title or not options:
             error_msg = f"Poll missing required fields: title={bool(title)}, options={len(options)}"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
+            logging.error("%s validation_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        logging.info(f"[publish_agent] Poll validated: title='{title}', options={len(options)}")
+        logging.info("%s publish start title='%s' options=%s", log_prefix, title, len(options))
 
-        # Step 4: Call Twitter API
-        logging.info("[publish_agent] Step 4: Calling Twitter API to post poll announcement")
         vote_base_url = settings.world_maci_vote_url
         if not vote_base_url.endswith("/"):
             vote_base_url += "/"
@@ -272,10 +253,7 @@ def build_publish_agent(settings: Settings) -> Agent:
             # Enforce WORLD_MACI_VOTE_URL prefix; take last path segment as contract address
             contract_part = (vote_url.rsplit("/", 1)[-1] if vote_url else "").strip()
             normalized_vote_url = f"{vote_base_url}{contract_part}" if contract_part else vote_base_url
-            logging.info(
-                "[publish_agent] Normalized vote_url to use WORLD_MACI_VOTE_URL prefix: %s",
-                normalized_vote_url,
-            )
+            logging.info("%s normalized vote_url=%s", log_prefix, normalized_vote_url)
 
         result = push_poll_to_x(
             poll_title=title,
@@ -290,12 +268,10 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         if result.get("success"):
             tweet_url = result.get("tweet_url", "")
-            logging.info(f"[publish_agent] SUCCESS: Poll posted to Twitter at {tweet_url}")
-            logging.info("[publish_agent] Action: Agent should extract tweet_url and pass it to send_to_telegram")
+            logging.info("%s success tweet_url=%s", log_prefix, tweet_url)
         else:
             error = result.get("error", "Unknown error")
-            logging.error(f"[publish_agent] FAILURE: Twitter post failed - {error}")
-            logging.error("[publish_agent] Action: Agent should still call send_to_telegram (without tweet_url)")
+            logging.error("%s failure: %s", log_prefix, error)
 
         return result
 
@@ -390,28 +366,21 @@ def build_publish_agent(settings: Settings) -> Agent:
             - DO NOT retry automatically
         """
         import logging
-        logging.info("[publish_agent] send_to_telegram tool called")
-        logging.info(f"[publish_agent] Input: poll_data length={len(str(poll_data)) if poll_data else 0}")
-        if contract_address:
-            logging.info(f"[publish_agent] Input: contract_address={contract_address}")
-        elif chain_push_error:
-            logging.info(f"[publish_agent] Input: chain_push_error={chain_push_error}")
-        else:
-            logging.info("[publish_agent] Input: No contract_address or error (chain push skipped)")
+        log_prefix = "[agent=publish_agent][tool=send_to_telegram]"
+        logging.info(
+            "%s call len=%s contract=%s tweet=%s chain_error=%s twitter_error=%s",
+            log_prefix,
+            len(str(poll_data)) if poll_data else 0,
+            contract_address or "none",
+            tweet_url or "none",
+            bool(chain_push_error),
+            bool(twitter_push_error),
+        )
 
-        if tweet_url:
-            logging.info(f"[publish_agent] Input: tweet_url={tweet_url}")
-        elif twitter_push_error:
-            logging.info(f"[publish_agent] Input: twitter_push_error={twitter_push_error}")
-        else:
-            logging.info("[publish_agent] Input: No tweet_url or error (Twitter push skipped)")
-
-        # Step 1: Validate Telegram configuration
-        logging.info("[publish_agent] Step 1: Validating Telegram configuration")
+        # Validate Telegram configuration
         if not settings.telegram_token:
             error_msg = "Telegram token not configured. Set TELEGRAM_TOKEN in .env"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
-            logging.error("[publish_agent] Action: Returning failure, agent should report configuration error to user")
+            logging.error("%s config_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
@@ -419,20 +388,15 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         if not settings.telegram_chat_ids:
             error_msg = "No Telegram chat IDs configured. Set TELEGRAM_CHAT_IDS in .env"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
-            logging.error("[publish_agent] Action: Returning failure, agent should report configuration error to user")
+            logging.error("%s config_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        logging.info(f"[publish_agent] Configuration validated: {len(settings.telegram_chat_ids)} chat(s) configured")
-
-        # Step 2: Parse poll_data JSON
-        logging.info("[publish_agent] Step 2: Parsing poll_data JSON")
+        # Parse poll_data JSON
         try:
             if isinstance(poll_data, str):
-                logging.info("[publish_agent] Parsing poll_data from string")
                 # Strip markdown code blocks (```json ... ``` or ``` ... ```)
                 cleaned = poll_data.strip()
                 if cleaned.startswith("```"):
@@ -455,27 +419,22 @@ def build_publish_agent(settings: Settings) -> Agent:
                 except json.JSONDecodeError as first_error:
                     # If still fails, try using ast.literal_eval as fallback
                     # This can handle Python-style strings better
-                    logging.warning(f"[publish_agent] Standard JSON parse failed: {first_error}, trying fallback...")
+                    logging.warning("%s parse_retry: %s", log_prefix, first_error)
                     import ast
                     # Replace True/False with true/false for JSON compatibility
                     fixed = cleaned.replace("False", "false").replace("True", "true")
                     data = json.loads(fixed)
             else:
-                logging.info("[publish_agent] Using poll_data as dict directly")
                 data = poll_data
-            logging.info(f"[publish_agent] JSON parsed successfully, keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
         except (json.JSONDecodeError, ValueError) as e:
             error_msg = f"Invalid JSON format in poll_data: {str(e)}"
-            logging.error(f"[publish_agent] FAILURE: {error_msg}")
-            logging.error(f"[publish_agent] First 800 chars: {poll_data[:800] if isinstance(poll_data, str) else poll_data}")
-            logging.error("[publish_agent] Action: Returning failure, agent should report parse error to user")
+            logging.error("%s parse_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
                 "error": error_msg
             }
 
-        # Step 3: Format message for Telegram
-        logging.info("[publish_agent] Step 3: Formatting Telegram message")
+        # Format message for Telegram
         from datetime import datetime, timezone
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -494,11 +453,6 @@ def build_publish_agent(settings: Settings) -> Agent:
         # Extract poll data
         per_handle = data.get("per_handle", [])
         poll = data.get("poll")
-
-        if poll:
-            logging.info("[publish_agent] Poll found, formatting poll details")
-        else:
-            logging.info("[publish_agent] No poll found, formatting status message")
 
         # Find which handle contributed the poll (for display purposes)
         poll_handle = None
@@ -601,26 +555,20 @@ def build_publish_agent(settings: Settings) -> Agent:
         message_lines.append("\n━━━━━━━━━━━━━━━━━━━━")
         message = "\n".join(message_lines)
 
-        logging.info(f"[publish_agent] Message formatted successfully, length: {len(message)} chars")
-
-        # Step 4: Send message to Telegram
-        logging.info(f"[publish_agent] Step 4: Sending message to {len(settings.telegram_chat_ids)} Telegram chat(s)")
+        logging.info("%s sending to %s chats", log_prefix, len(settings.telegram_chat_ids))
         result = send_telegram_message(
             message=message,
             telegram_token=settings.telegram_token,
             chat_ids=settings.telegram_chat_ids,
         )
 
-        # Step 5: Process result
         if result.get("success"):
             sent_count = result.get("sent_count", 0)
             total_chats = result.get("total_chats", 0)
-            logging.info(f"[publish_agent] SUCCESS: Message sent to {sent_count}/{total_chats} chat(s)")
-            logging.info("[publish_agent] Action: Agent should output success result to user")
+            logging.info("%s success sent=%s/%s", log_prefix, sent_count, total_chats)
         else:
             error = result.get("error", "Unknown error")
-            logging.error(f"[publish_agent] FAILURE: Failed to send message - {error}")
-            logging.error("[publish_agent] Action: Agent should report Telegram send failure to user")
+            logging.error("%s failure: %s", log_prefix, error)
 
         return result
 

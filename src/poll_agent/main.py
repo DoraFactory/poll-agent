@@ -73,7 +73,7 @@ def main() -> int:
     while True:
         iteration += 1
         try:
-            logging.info("==== iteration %s begin ====", iteration)
+            logging.info("[main] iteration %s begin", iteration)
             user_prompt = (
                 f"{base_prompt}\n"
                 f"Handles: {', '.join(settings.default_handles)}\n"
@@ -85,7 +85,6 @@ def main() -> int:
                 "Publishing must be completed before outputting the final JSON."
             )
 
-            logging.info("calling runner.run")
             events = list(
                 runner.run(
                     user_id=user_id,
@@ -93,28 +92,17 @@ def main() -> int:
                     new_message=to_content(user_prompt),
                 )
             )
-            logging.info("events received: %s", len(events))
-            logging.info(events)
-            for idx, ev in enumerate(events):
-                author = getattr(ev, "author", "")
-                text = getattr(ev, "content", None)
-                summary = ""
-                if text and getattr(text, "parts", None):
-                    parts_text = []
-                    for p in text.parts:
-                        if getattr(p, "text", None):
-                            parts_text.append(p.text)
-                        elif getattr(p, "function_call", None):
-                            parts_text.append(f"<function_call {p.function_call.name}>")
-                    summary = " | ".join(parts_text)
-                logging.info("event[%s] author=%s summary=%s", idx, author, summary)
             final_text, tool_calls = render_events(events)
 
             for call in tool_calls:
-                logging.info("[tool] %s", call)
+                logging.info("[agent=poll_orchestrator] %s", call)
 
-            logging.info("final response:\n%s", final_text or "No response produced.")
-            logging.info("==== iteration %s end ====", iteration)
+            if final_text:
+                logging.info("[agent=poll_orchestrator] final response: %s", final_text)
+            else:
+                logging.warning("[agent=poll_orchestrator] no final response produced.")
+
+            logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
             logging.error("error in iteration %s: %s", iteration, exc)
             traceback.print_exc()
