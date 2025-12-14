@@ -113,7 +113,8 @@ Poll Field Requirements:
   * MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
   * Starts with "Will" or "Should" based on topic nature:
     * Use "Should" for: opinion/value/ethical/policy questions (e.g., "Should the US raise tariffs?")
-    * Use "Will" for: predictions/future events/factual outcomes (e.g., "Will Bitcoin hit $100K in 2025?")
+    * Use "Will" for: predictions/future events/factual outcomes (e.g., "Will Bitcoin hit $100K?")
+  * If the title would be in the form "Will <something> by <date>?", rewrite it to start with "Should" and REMOVE the date phrase entirely.
   * Use smart quotes ("") for any quoted text in title
   * Use proper American English punctuation
 - "description": Describe the EVENT/NEWS in 2-3 sentences using NEUTRAL, OBJECTIVE language:
