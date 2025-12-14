@@ -43,6 +43,11 @@ class Settings:
     )
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_ids: List[str] = field(default_factory=lambda: _parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS")))
+    # Optional private rules/prompt override (keep the file gitignored and set this env var)
+    # Back-compat: X_POLL_PROMPT_PATH is also accepted.
+    x_poll_rules_path: str = field(
+        default_factory=lambda: os.getenv("X_POLL_RULES_PATH", "") or os.getenv("X_POLL_PROMPT_PATH", "")
+    )
 
     # World MACI API settings
     world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))

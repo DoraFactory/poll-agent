@@ -5,11 +5,28 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from xai_sdk import Client
 from xai_sdk.chat import user
 from xai_sdk.tools import x_search
+
+
+def _load_x_poll_rules_text(rules_path: str | None) -> str:
+    if rules_path:
+        with open(rules_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    for base in Path(__file__).resolve().parents:
+        default_path = base / "prompts" / "x_poll_rules.txt"
+        if default_path.exists():
+            return default_path.read_text(encoding="utf-8")
+
+    raise RuntimeError(
+        "Unable to load poll rules text from prompts/x_poll_rules.txt. "
+        "Create that file or set X_POLL_RULES_PATH to a readable rules file."
+    )
 
 
 def fetch_x_posts(
@@ -19,6 +36,7 @@ def fetch_x_posts(
     *,
     grok_model: str,
     api_key: Optional[str] = None,
+    rules_path: str | None = None,
 ) -> Dict[str, Any]:
     """Pull recent posts from given handles via Grok x_search and ask Grok
     to propose a poll-worthy topic.
@@ -80,63 +98,15 @@ def fetch_x_posts(
 }
 """
 
-    prompt = f"""
-Current UTC time: {now_utc}. Time window: past {window_label} (~{hours}h).
-
-{taget_handles_instructrion}
-
-You are an X viral Poll expert:
-
-For each handle, collect all posts/replies/retweets. Analyze engagement metrics (likes, replies, reposts, views) and trending signals to select the single most poll-worthy topic.
-
-Core Requirements:
-1. Almost all topics are allowed: politics, elections, war, religion, controversial topics, prediction markets, etc.
-2. Technology, economy, society, entertainment, sports, culture and all mainstream topics are allowed
-3. Maintain objectivity and neutrality: titles and options must be balanced with no obvious bias, options ≤20 words, EXACTLY 2 options only.
-4. Language & Style: Use standardized American English spelling and grammar. Use smart quotes ("") and smart apostrophes ('). Follow the Chicago Manual of Style for punctuation.
-
-Only Reject These:
-- Direct incitement to violence/harm
-- Explicit pornographic content
-- Privacy leaks (public figures' public info is acceptable)
-
-Rules:
-- Collect all posts from all handles in the time window first, then select the single most poll-worthy topic; don't output other topics.
-- Political and prediction market topics MUST be prioritized, do NOT self-censor.
-- If no new posts or violates core rejection rules, poll MUST be null, keep only "handle" and "status" fields.
-- Maximum ONE poll object per time window.
-- You MUST output pure JSON ONLY, NO prefixes, suffixes, explanations, markdown, ```json wrapper, apologies, or reminders.
-- Do NOT reject content just because it involves politics. Political topics are fully allowed.
-
-Poll Field Requirements:
-- "title":
-  * MUST be an engaging question that makes people want to vote. Should be clear, direct, and thought-provoking.
-  * Starts with "Will" or "Should" based on topic nature:
-    * Use "Should" for: opinion/value/ethical/policy questions (e.g., "Should the US raise tariffs?")
-    * Use "Will" for: predictions/future events/factual outcomes (e.g., "Will Bitcoin hit $100K?")
-  * If the title would be in the form "Will <something> by <date>?", rewrite it to start with "Should" and REMOVE the date phrase entirely.
-  * Use smart quotes ("") for any quoted text in title
-  * Use proper American English punctuation
-- "description": Describe the EVENT/NEWS in 2-3 sentences using NEUTRAL, OBJECTIVE language:
-  * Use phrases like: "According to reports...", "Sources claim...", "There are allegations that...", "It has been reported that..."
-  * DO NOT state unverified claims as absolute facts
-  * Focus ONLY on what happened and why it matters
-  * DO NOT mention who posted it, account names, or engagement numbers (likes/reposts/views)
-  * Write like a neutral news agency reporting on claims, not endorsing them
-  * Use smart quotes ("") and smart apostrophes (') throughout
-- "options":
-  * Keep options CONCISE and CLEAR - remove unnecessary explanatory text
-  * For Yes/No questions: use ONLY "Yes" and "No" (no additional text unless needed to remove ambiguity)
-  * For other binary choices: use brief, direct labels (≤20 words each)
-  * Options should be mirror opposites, matching title type (Will: bet outcomes; Should: value stances)
-  * Use smart quotes and apostrophes in option text
-- "why_choose_this_poll": Explain the competitive advantage of this topic - why it beat other candidates (engagement metrics, controversy level, timeliness, prediction market potential, public interest).
-
-Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):
-{json_example}
-
-- Execute now.
-"""
+    rules_text = _load_x_poll_rules_text(rules_path).strip()
+    prompt = (
+        f"Current UTC time: {now_utc}. Time window: past {window_label} (~{hours}h).\n\n"
+        f"{taget_handles_instructrion}\n\n"
+        f"{rules_text}\n\n"
+        "Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):\n"
+        f"{json_example.strip()}\n\n"
+        "- Execute now.\n"
+    )
     chat.append(user(prompt))
 
     logging.info("[grok_x_search] calling chat.sample ...")
