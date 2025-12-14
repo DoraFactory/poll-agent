@@ -49,17 +49,62 @@ def main() -> int:
 
     runner = build_runner(settings)
 
-    async def _ensure_session():
-        try:
-            await runner.session_service.create_session(
+    def _ensure_session():
+        """Create the ADK session if missing."""
+        session_service = runner.session_service
+
+        if hasattr(session_service, "get_session_sync") and hasattr(session_service, "create_session_sync"):
+            try:
+                existing = session_service.get_session_sync(
+                    app_name=settings.app_name,
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                if existing:
+                    return
+                session_service.create_session_sync(
+                    app_name=settings.app_name,
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                return
+            except Exception as exc:
+                logging.warning("Sync session ensure failed; falling back to async: %s", exc)
+
+        async def _ensure_async() -> None:
+            existing = await session_service.get_session(
                 app_name=settings.app_name,
                 user_id=user_id,
                 session_id=session_id,
             )
-        except Exception:
-            return
+            if existing:
+                return
+            await session_service.create_session(
+                app_name=settings.app_name,
+                user_id=user_id,
+                session_id=session_id,
+            )
 
-    asyncio.run(_ensure_session())
+        try:
+            asyncio.run(_ensure_async())
+        except RuntimeError:
+            import threading
+
+            exc_holder: list[BaseException] = []
+
+            def _thread_main() -> None:
+                try:
+                    asyncio.run(_ensure_async())
+                except BaseException as exc:  # pragma: no cover - defensive
+                    exc_holder.append(exc)
+
+            thread = threading.Thread(target=_thread_main, daemon=True)
+            thread.start()
+            thread.join(timeout=10)
+            if exc_holder:
+                raise exc_holder[0]
+
+    _ensure_session()
 
     logging.info(
         "[service] started. handles=%s, interval=%ss, agent_model=%s, grok_model=%s",
@@ -86,11 +131,7 @@ def main() -> int:
             )
 
             events = list(
-                runner.run(
-                    user_id=user_id,
-                    session_id=session_id,
-                    new_message=to_content(user_prompt),
-                )
+                runner.run(user_id=user_id, session_id=session_id, new_message=to_content(user_prompt))
             )
             final_text, tool_calls = render_events(events)
 
@@ -104,6 +145,30 @@ def main() -> int:
 
             logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
+            if isinstance(exc, ValueError) and "Session not found:" in str(exc):
+                logging.warning("session missing; recreating and retrying once: %s", exc)
+                try:
+                    _ensure_session()
+                    events = list(
+                        runner.run(user_id=user_id, session_id=session_id, new_message=to_content(user_prompt))
+                    )
+                    final_text, tool_calls = render_events(events)
+
+                    for call in tool_calls:
+                        logging.info("[agent=poll_orchestrator] %s", call)
+
+                    if final_text:
+                        logging.info("[agent=poll_orchestrator] final response: %s", final_text)
+                    else:
+                        logging.warning("[agent=poll_orchestrator] no final response produced.")
+
+                    logging.info("[main] iteration %s end", iteration)
+                    time.sleep(poll_interval)
+                    continue
+                except Exception as retry_exc:
+                    logging.error("retry after session recreate failed: %s", retry_exc)
+                    traceback.print_exc()
+
             logging.error("error in iteration %s: %s", iteration, exc)
             traceback.print_exc()
 
