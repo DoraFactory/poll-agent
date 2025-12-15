@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from typing import Dict, Any
 
 try:
     import requests
+    from requests import exceptions as _requests_exceptions
 except ImportError:
     requests = None
 
@@ -17,6 +19,9 @@ def push_poll_to_chain(
     voting_options: list[str],
     api_endpoint: str,
     api_token: str,
+    *,
+    connect_timeout_seconds: float = 10.0,
+    read_timeout_seconds: float = 120.0,
 ) -> Dict[str, Any]:
     """
     Push poll data to World MACI API endpoint and get contract address.
@@ -53,18 +58,24 @@ def push_poll_to_chain(
         }
 
     try:
+        idempotency_key = hashlib.sha256(
+            f"{poll_title}\n{poll_description}\n{voting_options}".encode("utf-8")
+        ).hexdigest()
+
         response = requests.post(
             api_endpoint,
             headers={
                 'Authorization': f'Bearer {api_token}',
                 'Content-Type': 'application/json',
+                # Safe to send even if server doesn't support it; helps prevent duplicates if it does.
+                'Idempotency-Key': idempotency_key,
             },
             json={
                 'pollTitle': poll_title,
                 'pollDescription': poll_description,
                 'votingOptions': voting_options,
             },
-            timeout=30
+            timeout=(connect_timeout_seconds, read_timeout_seconds),
         )
 
         # Accept both 200 (OK) and 201 (Created) as success
@@ -93,6 +104,19 @@ def push_poll_to_chain(
                 "error": f"HTTP {response.status_code}: {response.text[:200]}"
             }
 
+    except _requests_exceptions.ReadTimeout as e:
+        # Server may have completed the action but responded slowly.
+        logging.error(
+            "[push_chain] Read timeout after connect=%ss read=%ss: %s",
+            connect_timeout_seconds,
+            read_timeout_seconds,
+            e,
+        )
+        return {
+            "success": False,
+            "error": f"World MACI API read timeout (connect={connect_timeout_seconds}s read={read_timeout_seconds}s): {e}",
+            "maybe_success": True,
+        }
     except Exception as e:
         logging.error(f"[push_chain] Exception: {e}")
         return {

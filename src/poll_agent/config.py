@@ -52,7 +52,13 @@ class Settings:
     # World MACI API settings
     world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))
     world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
-    world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", "https://vota-test.dorafactory.org/round/"))
+    world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", ""))
+    world_maci_connect_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("WORLD_MACI_CONNECT_TIMEOUT_SECONDS", "10"))
+    )
+    world_maci_read_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("WORLD_MACI_READ_TIMEOUT_SECONDS", "120"))
+    )
 
     # Twitter API v2 settings (OAuth 1.0a)
     twitter_api_key: str = field(default_factory=lambda: os.getenv("TWITTER_API_KEY", ""))
