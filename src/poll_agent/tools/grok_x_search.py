@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,8 @@ from typing import Any, Dict, List, Optional
 from xai_sdk import Client
 from xai_sdk.chat import user
 from xai_sdk.tools import x_search
+
+from poll_agent.monitoring import log_metric
 
 
 def _load_x_poll_rules_text(rules_path: str | None) -> str:
@@ -110,12 +113,22 @@ def fetch_x_posts(
     chat.append(user(prompt))
 
     logging.info("[grok_x_search] calling chat.sample ...")
+    t0 = time.time()
     response = chat.sample()
+    duration = round(time.time() - t0, 3)
     raw_content = getattr(response, "content", "")
     logging.info(
         "[grok_x_search] sample done, raw type=%s length=%s",
         type(raw_content),
         len(raw_content) if hasattr(raw_content, "__len__") else "n/a",
+    )
+    log_metric(
+        "poll_agent.grok_x_search.sample",
+        success=isinstance(raw_content, str),
+        duration_seconds=duration,
+        window_seconds=window_seconds,
+        handles=len(cleaned_handles),
+        raw_length=len(raw_content) if isinstance(raw_content, str) else None,
     )
     parsed = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
 

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import time
 from typing import Dict, Any
+
+from poll_agent.monitoring import log_metric
 
 try:
     import requests
@@ -62,6 +65,7 @@ def push_poll_to_chain(
             f"{poll_title}\n{poll_description}\n{voting_options}".encode("utf-8")
         ).hexdigest()
 
+        start = time.time()
         response = requests.post(
             api_endpoint,
             headers={
@@ -78,6 +82,8 @@ def push_poll_to_chain(
             timeout=(connect_timeout_seconds, read_timeout_seconds),
         )
 
+        duration = round(time.time() - start, 3)
+
         # Accept both 200 (OK) and 201 (Created) as success
         if response.status_code in [200, 201]:
             result = response.json()
@@ -85,6 +91,14 @@ def push_poll_to_chain(
                 contract_address = result.get('data', {}).get('contractAddress', '')
                 logging.info(f"[push_chain] SUCCESS: Poll created on chain with HTTP {response.status_code}")
                 logging.info(f"[push_chain] Contract address: {contract_address}")
+                log_metric(
+                    "poll_agent.world_maci.push_chain",
+                    success=True,
+                    http_status=response.status_code,
+                    duration_seconds=duration,
+                    contract_address=contract_address,
+                    title=poll_title[:160],
+                )
                 return {
                     "success": True,
                     "contract_address": contract_address
@@ -92,6 +106,14 @@ def push_poll_to_chain(
             else:
                 error_msg = result.get('error', {}).get('message', 'Unknown error')
                 logging.error(f"[push_chain] FAILURE: API returned success=false - {error_msg}")
+                log_metric(
+                    "poll_agent.world_maci.push_chain",
+                    success=False,
+                    http_status=response.status_code,
+                    duration_seconds=duration,
+                    error=error_msg[:300],
+                    title=poll_title[:160],
+                )
                 return {
                     "success": False,
                     "error": f"API error: {error_msg}"
@@ -99,6 +121,14 @@ def push_poll_to_chain(
         else:
             logging.error(f"[push_chain] FAILURE: HTTP error {response.status_code}")
             logging.error(f"[push_chain] Response: {response.text[:500]}")
+            log_metric(
+                "poll_agent.world_maci.push_chain",
+                success=False,
+                http_status=response.status_code,
+                duration_seconds=duration,
+                error=(response.text or "")[:300],
+                title=poll_title[:160],
+            )
             return {
                 "success": False,
                 "error": f"HTTP {response.status_code}: {response.text[:200]}"
@@ -112,6 +142,15 @@ def push_poll_to_chain(
             read_timeout_seconds,
             e,
         )
+        log_metric(
+            "poll_agent.world_maci.push_chain",
+            success=False,
+            maybe_success=True,
+            error=str(e)[:300],
+            title=poll_title[:160],
+            connect_timeout_seconds=connect_timeout_seconds,
+            read_timeout_seconds=read_timeout_seconds,
+        )
         return {
             "success": False,
             "error": f"World MACI API read timeout (connect={connect_timeout_seconds}s read={read_timeout_seconds}s): {e}",
@@ -119,6 +158,12 @@ def push_poll_to_chain(
         }
     except Exception as e:
         logging.error(f"[push_chain] Exception: {e}")
+        log_metric(
+            "poll_agent.world_maci.push_chain",
+            success=False,
+            error=str(e)[:300],
+            title=poll_title[:160],
+        )
         return {
             "success": False,
             "error": str(e)

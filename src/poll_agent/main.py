@@ -5,6 +5,7 @@ import logging
 import sys
 import time
 import traceback
+import uuid
 
 try:
     from google.adk.models import google_llm as _google_llm
@@ -13,7 +14,14 @@ except Exception:
 
 from poll_agent.config import Settings
 from poll_agent.agent import build_runner
+from poll_agent.monitoring import log_metric
 from poll_agent.tools.utils import render_events, to_content
+
+
+def _truncate_for_log(text: str, max_len: int = 900) -> str:
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}…<truncated len={len(text)}>"
 
 
 def main() -> int:
@@ -24,6 +32,8 @@ def main() -> int:
     )
     logging.getLogger("google_adk").setLevel(logging.ERROR)
     logging.getLogger("google_adk.google_llm").setLevel(logging.ERROR)
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("litellm").setLevel(logging.WARNING)
     if _google_llm is not None:
         _google_llm._build_request_log = lambda _req: "<request log suppressed>"
 
@@ -117,8 +127,17 @@ def main() -> int:
     iteration = 0
     while True:
         iteration += 1
+        run_id = str(uuid.uuid4())
+        run_start = time.time()
         try:
             logging.info("[main] iteration %s begin", iteration)
+            log_metric(
+                "poll_agent.run_start",
+                run_id=run_id,
+                iteration=iteration,
+                poll_interval_seconds=poll_interval,
+                handles=settings.default_handles,
+            )
             user_prompt = (
                 f"{base_prompt}\n"
                 f"Handles: {', '.join(settings.default_handles)}\n"
@@ -139,10 +158,19 @@ def main() -> int:
                 logging.info("[agent=poll_orchestrator] %s", call)
 
             if final_text:
-                logging.info("[agent=poll_orchestrator] final response: %s", final_text)
+                logging.info("[agent=poll_orchestrator] final response: %s", _truncate_for_log(final_text))
             else:
                 logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+            log_metric(
+                "poll_agent.run_end",
+                run_id=run_id,
+                iteration=iteration,
+                success=True,
+                duration_seconds=round(time.time() - run_start, 3),
+                tool_calls=len(tool_calls),
+                has_final_text=bool(final_text),
+            )
             logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
             if isinstance(exc, ValueError) and "Session not found:" in str(exc):
@@ -158,10 +186,20 @@ def main() -> int:
                         logging.info("[agent=poll_orchestrator] %s", call)
 
                     if final_text:
-                        logging.info("[agent=poll_orchestrator] final response: %s", final_text)
+                        logging.info("[agent=poll_orchestrator] final response: %s", _truncate_for_log(final_text))
                     else:
                         logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+                    log_metric(
+                        "poll_agent.run_end",
+                        run_id=run_id,
+                        iteration=iteration,
+                        success=True,
+                        duration_seconds=round(time.time() - run_start, 3),
+                        tool_calls=len(tool_calls),
+                        has_final_text=bool(final_text),
+                        retried_session=True,
+                    )
                     logging.info("[main] iteration %s end", iteration)
                     time.sleep(poll_interval)
                     continue
@@ -169,6 +207,15 @@ def main() -> int:
                     logging.error("retry after session recreate failed: %s", retry_exc)
                     traceback.print_exc()
 
+            log_metric(
+                "poll_agent.run_end",
+                run_id=run_id,
+                iteration=iteration,
+                success=False,
+                duration_seconds=round(time.time() - run_start, 3),
+                error_type=type(exc).__name__,
+                error=str(exc)[:300],
+            )
             logging.error("error in iteration %s: %s", iteration, exc)
             traceback.print_exc()
 

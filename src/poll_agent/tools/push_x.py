@@ -100,7 +100,7 @@ def push_poll_to_x(
             short_title = poll_title[:200] + "..." if len(poll_title) > 200 else poll_title
             tweet_text = f"🗳️ {short_title}\n\nVote: {vote_url}"
 
-        logging.info(f"[push_x] Tweet text ({len(tweet_text)} chars): {tweet_text}")
+        logging.info("[push_x] Tweet prepared length=%s vote_url=%s", len(tweet_text), vote_url)
 
         # Set up OAuth 1.0a authentication
         auth = OAuth1(

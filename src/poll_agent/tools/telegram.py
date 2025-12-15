@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import List
 
+from poll_agent.monitoring import log_metric
+
 try:
     import requests
 except ImportError:  # pragma: no cover
@@ -31,6 +33,7 @@ def send_telegram_message(
     logging.info(f"[telegram] message length: {len(message)}, chat_ids: {chat_ids}")
 
     if not telegram_token:
+        log_metric("poll_agent.telegram.send_message", success=False, error="missing_token")
         return {
             "success": False,
             "error": "TELEGRAM_TOKEN not configured",
@@ -38,6 +41,7 @@ def send_telegram_message(
         }
 
     if not chat_ids:
+        log_metric("poll_agent.telegram.send_message", success=False, error="missing_chat_ids")
         return {
             "success": False,
             "error": "No chat IDs provided",
@@ -45,6 +49,7 @@ def send_telegram_message(
         }
 
     if requests is None:
+        log_metric("poll_agent.telegram.send_message", success=False, error="requests_missing")
         return {
             "success": False,
             "error": "requests library not available",
@@ -100,5 +105,11 @@ def send_telegram_message(
         "details": results
     }
 
+    log_metric(
+        "poll_agent.telegram.send_message",
+        success=result["success"],
+        sent_count=result["sent_count"],
+        total_chats=result["total_chats"],
+    )
     logging.info(f"[telegram] send_telegram_message completed: success={result['success']}, sent={success_count}")
     return result
