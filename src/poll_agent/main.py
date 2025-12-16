@@ -124,11 +124,14 @@ def main() -> int:
         settings.grok_model,
     )
 
+    run_once = settings.run_once
     iteration = 0
     while True:
         iteration += 1
         run_id = str(uuid.uuid4())
         run_start = time.time()
+        iteration_ok = False
+        user_prompt = ""
         try:
             logging.info("[main] iteration %s begin", iteration)
             log_metric(
@@ -171,6 +174,7 @@ def main() -> int:
                 tool_calls=len(tool_calls),
                 has_final_text=bool(final_text),
             )
+            iteration_ok = True
             logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
             if isinstance(exc, ValueError) and "Session not found:" in str(exc):
@@ -200,9 +204,8 @@ def main() -> int:
                         has_final_text=bool(final_text),
                         retried_session=True,
                     )
+                    iteration_ok = True
                     logging.info("[main] iteration %s end", iteration)
-                    time.sleep(poll_interval)
-                    continue
                 except Exception as retry_exc:
                     logging.error("retry after session recreate failed: %s", retry_exc)
                     traceback.print_exc()
@@ -218,6 +221,9 @@ def main() -> int:
             )
             logging.error("error in iteration %s: %s", iteration, exc)
             traceback.print_exc()
+
+        if run_once:
+            return 0 if iteration_ok else 1
 
         time.sleep(poll_interval)
 

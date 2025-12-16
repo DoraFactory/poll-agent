@@ -41,6 +41,9 @@ class Settings:
     include_trending_news: bool = field(
         default_factory=lambda: os.getenv("INCLUDE_TRENDING_NEWS", "true").lower() in ("true", "1", "yes")
     )
+    run_once: bool = field(
+        default_factory=lambda: os.getenv("RUN_ONCE", "false").lower() in ("true", "1", "yes")
+    )
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_ids: List[str] = field(default_factory=lambda: _parse_chat_ids(os.getenv("TELEGRAM_CHAT_IDS")))
     # Optional private rules/prompt override (keep the file gitignored and set this env var)
