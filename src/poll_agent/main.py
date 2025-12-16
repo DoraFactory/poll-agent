@@ -165,16 +165,16 @@ def main() -> int:
             else:
                 logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+            iteration_ok = bool(final_text)
             log_metric(
                 "poll_agent.run_end",
                 run_id=run_id,
                 iteration=iteration,
-                success=True,
+                success=iteration_ok,
                 duration_seconds=round(time.time() - run_start, 3),
                 tool_calls=len(tool_calls),
-                has_final_text=bool(final_text),
+                has_final_text=iteration_ok,
             )
-            iteration_ok = True
             logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
             if isinstance(exc, ValueError) and "Session not found:" in str(exc):
@@ -194,17 +194,17 @@ def main() -> int:
                     else:
                         logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+                    iteration_ok = bool(final_text)
                     log_metric(
                         "poll_agent.run_end",
                         run_id=run_id,
                         iteration=iteration,
-                        success=True,
+                        success=iteration_ok,
                         duration_seconds=round(time.time() - run_start, 3),
                         tool_calls=len(tool_calls),
-                        has_final_text=bool(final_text),
+                        has_final_text=iteration_ok,
                         retried_session=True,
                     )
-                    iteration_ok = True
                     logging.info("[main] iteration %s end", iteration)
                 except Exception as retry_exc:
                     logging.error("retry after session recreate failed: %s", retry_exc)

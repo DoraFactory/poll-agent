@@ -1,0 +1,14 @@
+FROM public.ecr.aws/lambda/python:3.10
+
+WORKDIR /var/task
+
+# Install runtime deps into the Lambda environment.
+# Build requires network access to fetch PyPI dependencies.
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir .
+
+# Lambda handler (module.function)
+CMD ["poll_agent.lambda_handler.handler"]
+
