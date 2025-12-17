@@ -1,4 +1,6 @@
-FROM public.ecr.aws/lambda/python:3.10
+# Use the AL2023-based Lambda image to ensure manylinux_2_28 wheels are compatible
+# (avoids building native deps like pyarrow/tiktoken from source).
+FROM public.ecr.aws/lambda/python:3.12
 
 WORKDIR /var/task
 

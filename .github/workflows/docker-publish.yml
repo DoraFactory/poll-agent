@@ -8,6 +8,9 @@ env:
   IMAGE_NAME: ${{ secrets.DOCKER_HUB_USER }}/poll-agent
   AWS_REGION: us-east-1
   ECR_REPOSITORY: poll-agent
+  # Lambda container images are typically deployed as a single-arch image (x86_64 or arm64).
+  # Keeping this as single-arch avoids dependency wheel gaps on secondary architectures.
+  LAMBDA_IMAGE_PLATFORMS: linux/amd64
   LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
   LAMBDA_ALIAS: ${{ secrets.LAMBDA_ALIAS }}
 
@@ -42,6 +45,8 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   build-and-push-ecr-lambda:
+    # Skip the ECR/Lambda pipeline unless AWS OIDC role is configured.
+    if: ${{ secrets.AWS_ROLE != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,14 +71,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Lambda multi-arch image to ECR
+      - name: Build and push Lambda image to ECR
         if: ${{ env.ECR_REPOSITORY != '' }}
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.lambda
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.LAMBDA_IMAGE_PLATFORMS }}
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-latest
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-${{ github.sha }}
