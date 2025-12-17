@@ -6,7 +6,7 @@ on:
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_HUB_USER }}/poll-agent
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
   LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
   LAMBDA_ALIAS: ${{ secrets.LAMBDA_ALIAS }}
