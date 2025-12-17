@@ -6,9 +6,13 @@ on:
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKER_HUB_USER }}/poll-agent
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+  LAMBDA_ALIAS: ${{ secrets.LAMBDA_ALIAS }}
 
 jobs:
-  build-and-push:
+  build-and-push-dockerhub:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -36,3 +40,66 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  build-and-push-ecr-lambda:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repository exists
+        if: ${{ env.ECR_REPOSITORY != '' }}
+        run: |
+          aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name "${ECR_REPOSITORY}" >/dev/null
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Lambda multi-arch image to ECR
+        if: ${{ env.ECR_REPOSITORY != '' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.lambda
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-${{ github.sha }}
+
+      - name: Update Lambda function to new image
+        if: ${{ env.ECR_REPOSITORY != '' && env.LAMBDA_FUNCTION_NAME != '' }}
+        run: |
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-${{ github.sha }}"
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${IMAGE_URI}" >/dev/null
+          aws lambda wait function-updated --function-name "${LAMBDA_FUNCTION_NAME}"
+          echo "Updated ${LAMBDA_FUNCTION_NAME} -> ${IMAGE_URI}"
+
+      - name: Publish version and update alias
+        if: ${{ env.ECR_REPOSITORY != '' && env.LAMBDA_FUNCTION_NAME != '' && env.LAMBDA_ALIAS != '' }}
+        run: |
+          VERSION="$(aws lambda publish-version --function-name "${LAMBDA_FUNCTION_NAME}" --query Version --output text)"
+          aws lambda update-alias \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --name "${LAMBDA_ALIAS}" \
+            --function-version "${VERSION}" >/dev/null
+          echo "Alias ${LAMBDA_ALIAS} -> version ${VERSION}"

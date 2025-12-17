@@ -124,11 +124,14 @@ def main() -> int:
         settings.grok_model,
     )
 
+    run_once = settings.run_once
     iteration = 0
     while True:
         iteration += 1
         run_id = str(uuid.uuid4())
         run_start = time.time()
+        iteration_ok = False
+        user_prompt = ""
         try:
             logging.info("[main] iteration %s begin", iteration)
             log_metric(
@@ -162,14 +165,15 @@ def main() -> int:
             else:
                 logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+            iteration_ok = bool(final_text)
             log_metric(
                 "poll_agent.run_end",
                 run_id=run_id,
                 iteration=iteration,
-                success=True,
+                success=iteration_ok,
                 duration_seconds=round(time.time() - run_start, 3),
                 tool_calls=len(tool_calls),
-                has_final_text=bool(final_text),
+                has_final_text=iteration_ok,
             )
             logging.info("[main] iteration %s end", iteration)
         except Exception as exc:  # pragma: no cover - service guard
@@ -190,19 +194,18 @@ def main() -> int:
                     else:
                         logging.warning("[agent=poll_orchestrator] no final response produced.")
 
+                    iteration_ok = bool(final_text)
                     log_metric(
                         "poll_agent.run_end",
                         run_id=run_id,
                         iteration=iteration,
-                        success=True,
+                        success=iteration_ok,
                         duration_seconds=round(time.time() - run_start, 3),
                         tool_calls=len(tool_calls),
-                        has_final_text=bool(final_text),
+                        has_final_text=iteration_ok,
                         retried_session=True,
                     )
                     logging.info("[main] iteration %s end", iteration)
-                    time.sleep(poll_interval)
-                    continue
                 except Exception as retry_exc:
                     logging.error("retry after session recreate failed: %s", retry_exc)
                     traceback.print_exc()
@@ -218,6 +221,9 @@ def main() -> int:
             )
             logging.error("error in iteration %s: %s", iteration, exc)
             traceback.print_exc()
+
+        if run_once:
+            return 0 if iteration_ok else 1
 
         time.sleep(poll_interval)
 
