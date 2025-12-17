@@ -7,7 +7,9 @@ WORKDIR /var/task
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 
-RUN pip install --no-cache-dir .
+# Ensure pip is new enough to pick up prebuilt wheels (avoids building Rust/C++ deps like tiktoken/pyarrow).
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN python -m pip install --no-cache-dir .
 
 # Lambda handler (module.function)
 CMD ["poll_agent.lambda_handler.handler"]
