@@ -11,4 +11,3 @@ RUN pip install --no-cache-dir .
 
 # Lambda handler (module.function)
 CMD ["poll_agent.lambda_handler.handler"]
-
