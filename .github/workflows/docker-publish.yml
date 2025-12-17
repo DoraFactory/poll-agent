@@ -45,8 +45,6 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   build-and-push-ecr-lambda:
-    # Skip the ECR/Lambda pipeline unless AWS OIDC role is configured.
-    if: ${{ secrets.AWS_ROLE != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
