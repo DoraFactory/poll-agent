@@ -63,6 +63,19 @@ class Settings:
         default_factory=lambda: float(os.getenv("WORLD_MACI_READ_TIMEOUT_SECONDS", "120"))
     )
 
+    # Dora vota indexer (recent on-chain poll titles, used to avoid duplicates)
+    vota_indexer_endpoint: str = field(default_factory=lambda: os.getenv("VOTA_INDEXER_ENDPOINT", ""))
+    vota_recent_rounds_n: int = field(default_factory=lambda: int(os.getenv("VOTA_RECENT_ROUNDS_N", "10")))
+    vota_indexer_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("VOTA_INDEXER_TIMEOUT_SECONDS", "15"))
+    )
+    vota_indexer_max_retries: int = field(default_factory=lambda: int(os.getenv("VOTA_INDEXER_MAX_RETRIES", "3")))
+    vota_indexer_backoff_seconds: float = field(
+        default_factory=lambda: float(os.getenv("VOTA_INDEXER_BACKOFF_SECONDS", "0.5"))
+    )
+    # Populated at runtime on service start (not from env)
+    recent_round_titles: List[str] = field(default_factory=list, init=False, repr=False)
+
     # Twitter API v2 settings (OAuth 1.0a)
     twitter_api_key: str = field(default_factory=lambda: os.getenv("TWITTER_API_KEY", ""))
     twitter_api_secret: str = field(default_factory=lambda: os.getenv("TWITTER_API_SECRET", ""))

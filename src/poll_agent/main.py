@@ -15,6 +15,7 @@ except Exception:
 from poll_agent.config import Settings
 from poll_agent.agent import build_runner
 from poll_agent.monitoring import log_metric
+from poll_agent.tools.fetch_recent_polls import fetch_recent_round_titles
 from poll_agent.tools.utils import render_events, to_content
 
 
@@ -58,6 +59,31 @@ def main() -> int:
     )
 
     runner = build_runner(settings)
+
+    # Service startup: fetch latest on-chain poll titles so Grok can avoid duplicates.
+    if not settings.vota_indexer_endpoint:
+        settings.vota_indexer_endpoint = "https://vota-api.dorafactory.org/"
+    try:
+        settings.recent_round_titles = fetch_recent_round_titles(
+            endpoint=settings.vota_indexer_endpoint,
+            n=settings.vota_recent_rounds_n,
+            timeout_seconds=settings.vota_indexer_timeout_seconds,
+            max_retries=settings.vota_indexer_max_retries,
+            backoff_seconds=settings.vota_indexer_backoff_seconds,
+        )
+        log_metric(
+            "poll_agent.vota_indexer.recent_titles",
+            success=True,
+            count=len(settings.recent_round_titles),
+        )
+    except Exception as exc:
+        logging.warning("[vota_indexer] failed to fetch recent titles: %s", exc)
+        log_metric(
+            "poll_agent.vota_indexer.recent_titles",
+            success=False,
+            error_type=type(exc).__name__,
+            error=str(exc)[:300],
+        )
 
     def _ensure_session():
         """Create the ADK session if missing."""

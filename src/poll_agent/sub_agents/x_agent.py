@@ -31,6 +31,7 @@ def build_x_feed_agent(settings: Settings) -> Agent:
             grok_model=settings.grok_model,
             api_key=settings.xai_api_key,
             rules_path=settings.x_poll_rules_path or None,
+            avoid_round_titles=settings.recent_round_titles or None,
         )
 
     instruction_text = (

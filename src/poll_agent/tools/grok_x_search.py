@@ -40,6 +40,7 @@ def fetch_x_posts(
     grok_model: str,
     api_key: Optional[str] = None,
     rules_path: str | None = None,
+    avoid_round_titles: list[str] | None = None,
 ) -> Dict[str, Any]:
     """Pull recent posts from given handles via Grok x_search and ask Grok
     to propose a poll-worthy topic.
@@ -102,10 +103,22 @@ def fetch_x_posts(
 """
 
     rules_text = _load_x_poll_rules_text(rules_path).strip()
+
+    avoid_block = ""
+    if avoid_round_titles:
+        lines = "\n".join(f"- {t}" for t in avoid_round_titles[:20] if t and str(t).strip())
+        if lines:
+            avoid_block = (
+                "Recent on-chain poll titles (DO NOT repeat or closely paraphrase; pick a different topic if similar):\n"
+                f"{lines}\n\n"
+                "Hard constraint: If your best candidate is similar to any title above (same core event/person/topic), "
+                "you MUST choose the next-best non-overlapping topic instead.\n\n"
+            )
     prompt = (
         f"Current UTC time: {now_utc}. Time window: past {window_label} (~{hours}h).\n\n"
         f"{taget_handles_instructrion}\n\n"
         f"{rules_text}\n\n"
+        f"{avoid_block}"
         "Output STRICTLY the following JSON (JSON ONLY, no explanations, no ```json wrapper):\n"
         f"{json_example.strip()}\n\n"
         "- Execute now.\n"
