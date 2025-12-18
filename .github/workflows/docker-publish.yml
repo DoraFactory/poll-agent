@@ -77,6 +77,10 @@ jobs:
           file: ./Dockerfile.lambda
           push: true
           platforms: ${{ env.LAMBDA_IMAGE_PLATFORMS }}
+          # Lambda does not support OCI image indexes/attestations.
+          # Disable BuildKit provenance/SBOM so the pushed artifact is a plain single-arch image manifest.
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-latest
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:lambda-${{ github.sha }}
