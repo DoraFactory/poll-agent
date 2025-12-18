@@ -78,4 +78,5 @@ def fetch_recent_round_titles(
             titles.append(title)
 
     logging.info("[vota_indexer] fetched recent titles=%s", len(titles))
+    logging.info("[vota_indexer] titles: %s", titles)
     return titles
