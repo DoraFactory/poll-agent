@@ -109,9 +109,9 @@ def fetch_x_posts(
         lines = "\n".join(f"- {t}" for t in avoid_round_titles[:20] if t and str(t).strip())
         if lines:
             avoid_block = (
-                "Recent on-chain poll titles (DO NOT repeat or closely paraphrase; pick a different topic if similar):\n"
+                "Recent on-chain poll titles (DO NOT repeat or closely paraphrase; avoid the same core event/person/topic):\n"
                 f"{lines}\n\n"
-                "Hard constraint: If your best candidate is similar to any title above (same core event/person/topic), "
+                "Hard constraint: If your best candidate shares the same core subject or event as any title above, "
                 "you MUST choose the next-best non-overlapping topic instead.\n\n"
             )
     prompt = (
