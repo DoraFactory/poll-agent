@@ -167,12 +167,9 @@ def _fetch_x_posts_single(
     }
   ],
   "poll": {
-    "title": "Should/Will the US implement universal basic income? (Use smart quotes "" and Will/Should appropriately)",
-    "description": "According to recent policy discussions, there are growing debates about implementing a universal basic income program. Proponents argue it could reduce poverty, while critics cite concerns about fiscal sustainability. The proposal has gained traction across multiple political groups. (Use smart quotes "" and apostrophes ' throughout)",
-    "options": [
-      "Yes",
-      "No"
-    ],
+    "title": "Poll question in an allowed format per the rules",
+    "description": "According to xxx, what do you think about yyy?",
+    "options": [option1, option2],
     "sample_posts": [{"handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..."}],
     "why_choose_this_poll": "Explain why THIS topic was selected over others: high engagement, controversy, timeliness, prediction market relevance, etc.",
     "stats_snapshot": {"likes": 0, "reposts": 0, "replies": 0, "views": 0}
