@@ -60,30 +60,39 @@ def main() -> int:
 
     runner = build_runner(settings)
 
+    def _refresh_recent_titles(reason: str) -> bool:
+        if not settings.vota_indexer_endpoint:
+            settings.vota_indexer_endpoint = "https://vota-api.dorafactory.org/"
+        try:
+            settings.recent_round_titles = fetch_recent_round_titles(
+                endpoint=settings.vota_indexer_endpoint,
+                n=settings.vota_recent_rounds_n,
+                timeout_seconds=settings.vota_indexer_timeout_seconds,
+                max_retries=settings.vota_indexer_max_retries,
+                backoff_seconds=settings.vota_indexer_backoff_seconds,
+            )
+            log_metric(
+                "poll_agent.vota_indexer.recent_titles",
+                success=True,
+                count=len(settings.recent_round_titles),
+                reason=reason,
+            )
+            return True
+        except Exception as exc:
+            logging.warning("[vota_indexer] failed to fetch recent titles: %s", exc)
+            log_metric(
+                "poll_agent.vota_indexer.recent_titles",
+                success=False,
+                error_type=type(exc).__name__,
+                error=str(exc)[:300],
+                reason=reason,
+            )
+            return False
+
     # Service startup: fetch latest on-chain poll titles so Grok can avoid duplicates.
-    if not settings.vota_indexer_endpoint:
-        settings.vota_indexer_endpoint = "https://vota-api.dorafactory.org/"
-    try:
-        settings.recent_round_titles = fetch_recent_round_titles(
-            endpoint=settings.vota_indexer_endpoint,
-            n=settings.vota_recent_rounds_n,
-            timeout_seconds=settings.vota_indexer_timeout_seconds,
-            max_retries=settings.vota_indexer_max_retries,
-            backoff_seconds=settings.vota_indexer_backoff_seconds,
-        )
-        log_metric(
-            "poll_agent.vota_indexer.recent_titles",
-            success=True,
-            count=len(settings.recent_round_titles),
-        )
-    except Exception as exc:
-        logging.warning("[vota_indexer] failed to fetch recent titles: %s", exc)
-        log_metric(
-            "poll_agent.vota_indexer.recent_titles",
-            success=False,
-            error_type=type(exc).__name__,
-            error=str(exc)[:300],
-        )
+    last_titles_refresh = 0.0
+    if _refresh_recent_titles("startup"):
+        last_titles_refresh = time.time()
 
     def _ensure_session():
         """Create the ADK session if missing."""
@@ -159,6 +168,9 @@ def main() -> int:
         iteration_ok = False
         user_prompt = ""
         try:
+            if time.time() - last_titles_refresh >= poll_interval:
+                if _refresh_recent_titles("iteration"):
+                    last_titles_refresh = time.time()
             logging.info("[main] iteration %s begin", iteration)
             log_metric(
                 "poll_agent.run_start",
