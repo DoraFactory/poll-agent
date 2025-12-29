@@ -388,8 +388,11 @@ def build_publish_agent(settings: Settings) -> Agent:
                 "error": error_msg
             }
 
-        if not settings.telegram_chat_ids:
-            error_msg = "No Telegram chat IDs configured. Set TELEGRAM_CHAT_IDS in .env"
+        if not settings.telegram_group_chat_ids and not settings.telegram_channel_chat_ids:
+            error_msg = (
+                "No Telegram chat IDs configured. "
+                "Set TELEGRAM_GROUP_CHAT_IDS and/or TELEGRAM_CHANNEL_CHAT_IDS in .env"
+            )
             logging.error("%s config_error: %s", log_prefix, error_msg)
             return {
                 "success": False,
@@ -559,24 +562,80 @@ def build_publish_agent(settings: Settings) -> Agent:
                     message_lines.append(f"   • @{html_escape(handle)}: {html_escape(stat)}")
 
         message_lines.append("\n━━━━━━━━━━━━━━━━━━━━")
-        message = "\n".join(message_lines)
+        group_message = "\n".join(message_lines)
 
-        logging.info("%s sending to %s chats", log_prefix, len(settings.telegram_chat_ids))
-        result = send_telegram_message(
-            message=message,
-            telegram_token=settings.telegram_token,
-            chat_ids=settings.telegram_chat_ids,
-        )
+        group_chat_ids = settings.telegram_group_chat_ids
+        channel_chat_ids = settings.telegram_channel_chat_ids
+        if not group_chat_ids and not channel_chat_ids:
+            error_msg = "No Telegram chat IDs configured"
+            logging.error("%s failure: %s", log_prefix, error_msg)
+            return {"success": False, "error": error_msg}
 
-        if result.get("success"):
-            sent_count = result.get("sent_count", 0)
-            total_chats = result.get("total_chats", 0)
+        channel_lines: list[str] = []
+        if poll and poll is not None:
+            title = poll.get("title") or poll.get("topic_title", "N/A")
+            channel_lines.append(f"🗳️ <b>{html_escape(title)}</b>")
+
+            options = poll.get("options", [])
+            if options:
+                channel_lines.append("Options:")
+                for i, opt in enumerate(options, 1):
+                    channel_lines.append(f"{i}. {html_escape(opt)}")
+
+            vote_url = ""
+            if contract_address:
+                vote_base_url = settings.world_maci_vote_url
+                if not vote_base_url.endswith('/'):
+                    vote_base_url += '/'
+                vote_url = f"{vote_base_url}{contract_address}"
+            elif tweet_url:
+                vote_url = tweet_url
+
+            if vote_url:
+                channel_lines.append(f"<a href='{vote_url}'>Vote</a>")
+        else:
+            explain = data.get("explain", "No suitable poll topic")
+            channel_lines.append(html_escape(explain))
+
+        channel_message = "\n".join(channel_lines)
+
+        group_result = None
+        channel_result = None
+        sent_count = 0
+        total_chats = 0
+
+        if group_chat_ids:
+            logging.info("%s sending to %s group chats", log_prefix, len(group_chat_ids))
+            group_result = send_telegram_message(
+                message=group_message,
+                telegram_token=settings.telegram_token,
+                chat_ids=group_chat_ids,
+            )
+            sent_count += group_result.get("sent_count", 0)
+            total_chats += group_result.get("total_chats", 0)
+        if channel_chat_ids:
+            logging.info("%s sending to %s channel chats", log_prefix, len(channel_chat_ids))
+            channel_result = send_telegram_message(
+                message=channel_message,
+                telegram_token=settings.telegram_token,
+                chat_ids=channel_chat_ids,
+            )
+            sent_count += channel_result.get("sent_count", 0)
+            total_chats += channel_result.get("total_chats", 0)
+
+        success = bool((group_result and group_result.get("success")) or (channel_result and channel_result.get("success")))
+        if success:
             logging.info("%s success sent=%s/%s", log_prefix, sent_count, total_chats)
         else:
-            error = result.get("error", "Unknown error")
-            logging.error("%s failure: %s", log_prefix, error)
+            logging.error("%s failure: no messages sent", log_prefix)
 
-        return result
+        return {
+            "success": success,
+            "sent_count": sent_count,
+            "total_chats": total_chats,
+            "group": group_result,
+            "channel": channel_result,
+        }
 
     instruction_text = (
         "You are the publish_agent responsible for publishing poll results to various platforms.\n\n"
