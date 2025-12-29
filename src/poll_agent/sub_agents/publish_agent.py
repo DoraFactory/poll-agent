@@ -576,6 +576,10 @@ def build_publish_agent(settings: Settings) -> Agent:
             title = poll.get("title") or poll.get("topic_title", "N/A")
             channel_lines.append(f"🗳️ <b>{html_escape(title)}</b>")
 
+            tag = poll.get("tag") or poll.get("category")
+            if tag:
+                channel_lines.append(f"🏷️ {html_escape(tag)}")
+
             options = poll.get("options", [])
             if options:
                 channel_lines.append("Options:")
@@ -592,10 +596,7 @@ def build_publish_agent(settings: Settings) -> Agent:
                 vote_url = tweet_url
 
             if vote_url:
-                channel_lines.append(f"<a href='{vote_url}'>Vote</a>")
-        else:
-            explain = data.get("explain", "No suitable poll topic")
-            channel_lines.append(html_escape(explain))
+                channel_lines.append(f"👉 <a href='{vote_url}'>Vote Here</a>")
 
         channel_message = "\n".join(channel_lines)
 
@@ -613,7 +614,7 @@ def build_publish_agent(settings: Settings) -> Agent:
             )
             sent_count += group_result.get("sent_count", 0)
             total_chats += group_result.get("total_chats", 0)
-        if channel_chat_ids:
+        if channel_chat_ids and poll and channel_message:
             logging.info("%s sending to %s channel chats", log_prefix, len(channel_chat_ids))
             channel_result = send_telegram_message(
                 message=channel_message,
