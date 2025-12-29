@@ -469,6 +469,10 @@ def build_publish_agent(settings: Settings) -> Agent:
             title = poll.get("title") or poll.get("topic_title", "N/A")
             message_lines.append(f"❓<b>Poll title</b>\n<b>{html_escape(title)}</b>\n")
 
+            tag = poll.get("tag") or poll.get("category")
+            if tag:
+                message_lines.append(f"🏷️ <b>Tag</b>: {html_escape(tag)}\n")
+
             # Description (what happened) - support both new "description" and old "poll_question"
             description = poll.get("description") or poll.get("poll_question", "N/A")
             message_lines.append(f"📝 <b>Description</b>\n{html_escape(description)}\n")
