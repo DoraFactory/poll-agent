@@ -170,6 +170,7 @@ def _fetch_x_posts_single(
     "title": "Poll question in an allowed format per the rules",
     "description": "According to xxx, what do you think about yyy?",
     "options": [option1, option2],
+    "tag": "category label from the Categories list",
     "sample_posts": [{"handle": "elonmusk", "summary": "brief description", "url": "https://x.com/..."}],
     "why_choose_this_poll": "Explain why THIS topic was selected over others: high engagement, controversy, timeliness, prediction market relevance, etc.",
     "stats_snapshot": {"likes": 0, "reposts": 0, "replies": 0, "views": 0}
