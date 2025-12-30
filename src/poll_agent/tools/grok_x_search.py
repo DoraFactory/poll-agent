@@ -83,7 +83,7 @@ def _select_best_candidate_index(
 
     prompt = (
         "Select the single best poll candidate. Prefer higher engagement, timeliness, "
-        "controversy, and prediction-market relevance. Avoid redundant topics. "
+        "and controversy. Avoid redundant topics. Avoid redundant topics."
         "Return JSON ONLY as {\"winner_index\": <int>}.\n\n"
         f"Candidates:\n{json.dumps(shortlist)}\n"
     )
