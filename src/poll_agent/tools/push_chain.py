@@ -22,6 +22,8 @@ def push_poll_to_chain(
     voting_options: list[str],
     api_endpoint: str,
     api_token: str,
+    vercel_automation_bypass_secret: str = "",
+    schedule_hours: int = 0,
     *,
     connect_timeout_seconds: float = 10.0,
     read_timeout_seconds: float = 120.0,
@@ -35,6 +37,8 @@ def push_poll_to_chain(
         voting_options: List of voting options
         api_endpoint: World MACI API endpoint URL
         api_token: Bearer token for authentication
+        vercel_automation_bypass_secret: Vercel automation bypass secret for protected endpoints
+        schedule_hours: Delay poll start time in hours (0 starts immediately)
 
     Returns:
         dict with 'success' (bool), 'contract_address' (str if success), 'error' (str if failed)
@@ -73,11 +77,13 @@ def push_poll_to_chain(
                 'Content-Type': 'application/json',
                 # Safe to send even if server doesn't support it; helps prevent duplicates if it does.
                 'Idempotency-Key': idempotency_key,
+                'x-vercel-protection-bypass': vercel_automation_bypass_secret or "",
             },
             json={
                 'pollTitle': poll_title,
                 'pollDescription': poll_description,
                 'votingOptions': voting_options,
+                'scheduleHours': schedule_hours,
             },
             timeout=(connect_timeout_seconds, read_timeout_seconds),
         )

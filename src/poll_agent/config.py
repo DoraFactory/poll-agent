@@ -64,11 +64,17 @@ class Settings:
     world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))
     world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
     world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", ""))
+    world_maci_schedule_hours: int = field(
+        default_factory=lambda: int(os.getenv("WORLD_MACI_SCHEDULE_HOURS", "0"))
+    )
     world_maci_connect_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("WORLD_MACI_CONNECT_TIMEOUT_SECONDS", "10"))
     )
     world_maci_read_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("WORLD_MACI_READ_TIMEOUT_SECONDS", "120"))
+    )
+    vercel_automation_bypass_secret: str = field(
+        default_factory=lambda: os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "")
     )
 
     # Dora vota indexer (recent on-chain poll titles, used to avoid duplicates)
