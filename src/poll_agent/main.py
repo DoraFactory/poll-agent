@@ -41,8 +41,10 @@ def main() -> int:
     settings = Settings()
     settings.require_keys()
 
-    if not settings.default_handles:
-        logging.error("X_HANDLES not configured: Please provide at least one handle in .env or environment variables.")
+    if not settings.default_handles and not settings.private_wires:
+        logging.error(
+            "No handles configured: provide X_HANDLES and/or PRIVATE_WIRES in .env or environment variables."
+        )
         return 1
 
     poll_interval = settings.poll_interval_seconds
@@ -152,8 +154,9 @@ def main() -> int:
     _ensure_session()
 
     logging.info(
-        "[service] started. handles=%s, interval=%ss, agent_model=%s, grok_model=%s",
+        "[service] started. x_handles=%s, private_wires=%s, interval=%ss, agent_model=%s, grok_model=%s",
         settings.default_handles,
+        settings.private_wires,
         poll_interval,
         settings.agent_model,
         settings.grok_model,
@@ -178,10 +181,12 @@ def main() -> int:
                 iteration=iteration,
                 poll_interval_seconds=poll_interval,
                 handles=settings.default_handles,
+                private_wires=settings.private_wires,
             )
             user_prompt = (
                 f"{base_prompt}\n"
-                f"Handles: {', '.join(settings.default_handles)}\n"
+                f"X_HANDLES: {', '.join(settings.default_handles) if settings.default_handles else '(empty)'}\n"
+                f"PRIVATE_WIRES: {', '.join(settings.private_wires) if settings.private_wires else '(empty)'}\n"
                 f"Time window: Posts from the last {poll_interval} seconds.\n\n"
                 "【Required Two Calls】:\n"
                 "1. Call x_feed_agent (transfer_to_agent) to fetch data\n"

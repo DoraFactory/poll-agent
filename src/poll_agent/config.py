@@ -34,6 +34,7 @@ class Settings:
     # Model for Grok x_search
     grok_model: str = field(default_factory=lambda: os.getenv("GROK_MODEL", "grok-beta"))
     default_handles: List[str] = field(default_factory=lambda: _parse_handles(os.getenv("X_HANDLES")))
+    private_wires: List[str] = field(default_factory=lambda: _parse_handles(os.getenv("PRIVATE_WIRES")))
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "agents"))
     poll_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("POLL_INTERVAL_SECONDS", "1800"))

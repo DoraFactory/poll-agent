@@ -15,12 +15,63 @@ def build_publish_agent(settings: Settings) -> Agent:
     Currently supports: World MACI API, Twitter (X), and Telegram
 
     Tools:
-    1. push_to_chain: Push poll to World MACI API, returns contract address
-    2. push_to_x: Post poll announcement to Twitter/X with vote URL
-    3. send_to_telegram: Send poll (with optional contract address and tweet URL) to Telegram
+    1. publish_all: Publish all available poll candidates (X_HANDLES + PRIVATE_WIRES)
+       to chain and X, then send Telegram summary.
 
     - Agent: Uses Grok model as poll publishing agent
     """
+
+    def _extract_publish_targets(data: dict) -> list[dict]:
+        targets: list[dict] = []
+        seen_keys: set[tuple[str, str, tuple[str, ...]]] = set()
+
+        def _add_target(source_group: str, poll: dict | None, per_handle: list) -> None:
+            if not isinstance(poll, dict):
+                return
+            title = str(poll.get("title") or poll.get("topic_title") or "").strip()
+            options_value = poll.get("options") or []
+            options = [str(item) for item in options_value] if isinstance(options_value, list) else []
+            dedup_key = (source_group, title, tuple(options))
+            if dedup_key in seen_keys:
+                return
+            seen_keys.add(dedup_key)
+            targets.append(
+                {
+                    "source_group": source_group,
+                    "per_handle": per_handle if isinstance(per_handle, list) else [],
+                    "poll": poll,
+                }
+            )
+
+        polls_value = data.get("polls")
+        if isinstance(polls_value, list):
+            for item in polls_value:
+                if not isinstance(item, dict):
+                    continue
+                source_group = item.get("source_group")
+                if source_group not in ("X_HANDLES", "PRIVATE_WIRES"):
+                    tag = item.get("tag") or item.get("category")
+                    source_group = "PRIVATE_WIRES" if tag == "PRIVATE_WIRES" else "X_HANDLES"
+                per_handle = (
+                    data.get("private_wires_per_handle", [])
+                    if source_group == "PRIVATE_WIRES"
+                    else data.get("per_handle", [])
+                )
+                _add_target(source_group, item, per_handle)
+
+        poll = data.get("poll")
+        poll_source = poll.get("source_group") if isinstance(poll, dict) else "X_HANDLES"
+        _add_target(poll_source or "X_HANDLES", poll if isinstance(poll, dict) else None, data.get("per_handle", []))
+
+        private_poll = data.get("private_wires_poll")
+        private_source = private_poll.get("source_group") if isinstance(private_poll, dict) else "PRIVATE_WIRES"
+        _add_target(
+            private_source or "PRIVATE_WIRES",
+            private_poll if isinstance(private_poll, dict) else None,
+            data.get("private_wires_per_handle", []),
+        )
+
+        return targets
 
     def push_to_chain(poll_data: str) -> dict:
         """
@@ -277,6 +328,136 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         return result
 
+    def publish_all(poll_data: str) -> dict:
+        """
+        Publish all available polls in poll_data (e.g. X_HANDLES + PRIVATE_WIRES).
+
+        For each poll:
+        1) push to chain
+        2) if chain succeeds, push to X
+        Finally, send one Telegram summary with per-poll publish results.
+        """
+        import logging
+
+        log_prefix = "[agent=publish_agent][tool=publish_all]"
+        logging.info("%s call len=%s", log_prefix, len(str(poll_data)) if poll_data else 0)
+
+        try:
+            if isinstance(poll_data, str):
+                cleaned = poll_data.strip()
+                if cleaned.startswith("```"):
+                    lines = cleaned.split('\n')
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    cleaned = '\n'.join(lines)
+                cleaned = cleaned.replace("\\'", "'")
+                data = json.loads(cleaned)
+            else:
+                data = poll_data
+        except (json.JSONDecodeError, ValueError) as e:
+            error_msg = f"Invalid JSON format: {str(e)}"
+            logging.error("%s parse_error: %s", log_prefix, error_msg)
+            return {"success": False, "error": error_msg}
+
+        if not isinstance(data, dict):
+            error_msg = "poll_data must be a JSON object"
+            logging.error("%s data_error: %s", log_prefix, error_msg)
+            return {"success": False, "error": error_msg}
+
+        targets = _extract_publish_targets(data)
+        if not targets:
+            logging.info("%s no publishable polls; sending heartbeat telegram only", log_prefix)
+            telegram_result = send_to_telegram(json.dumps(data, ensure_ascii=False))
+            return {
+                "success": bool(telegram_result.get("success")),
+                "published_count": 0,
+                "targets_count": 0,
+                "results": [],
+                "telegram": telegram_result,
+            }
+
+        publish_results: list[dict] = []
+        first_contract_address = ""
+        first_tweet_url = ""
+        chain_success_count = 0
+        x_success_count = 0
+
+        vote_base_url = settings.world_maci_vote_url
+        if vote_base_url and not vote_base_url.endswith("/"):
+            vote_base_url += "/"
+
+        for target in targets:
+            source_group = target.get("source_group", "UNKNOWN")
+            poll = target.get("poll") if isinstance(target.get("poll"), dict) else {}
+            per_handle = target.get("per_handle") if isinstance(target.get("per_handle"), list) else []
+            title = poll.get("title") or poll.get("topic_title", "")
+            tag = poll.get("tag") or poll.get("category")
+
+            single_payload = {"per_handle": per_handle, "poll": poll}
+            single_payload_text = json.dumps(single_payload, ensure_ascii=False)
+
+            chain_result = push_to_chain(single_payload_text)
+            contract_address = chain_result.get("contract_address", "") if chain_result.get("success") else ""
+            vote_url = f"{vote_base_url}{contract_address}" if vote_base_url and contract_address else ""
+            if chain_result.get("success"):
+                chain_success_count += 1
+                if not first_contract_address:
+                    first_contract_address = contract_address
+
+            x_result: dict = {
+                "success": False,
+                "skipped": True,
+                "error": "Skipped because chain publish failed",
+            }
+            tweet_url = ""
+            if contract_address:
+                x_result = push_to_x(single_payload_text, vote_url)
+                tweet_url = x_result.get("tweet_url", "") if x_result.get("success") else ""
+                if x_result.get("success"):
+                    x_success_count += 1
+                    if not first_tweet_url:
+                        first_tweet_url = tweet_url
+
+            publish_results.append(
+                {
+                    "source_group": source_group,
+                    "title": title,
+                    "tag": tag,
+                    "contract_address": contract_address,
+                    "vote_url": vote_url,
+                    "tweet_url": tweet_url,
+                    "chain": chain_result,
+                    "x": x_result,
+                }
+            )
+
+        enhanced_data = {**data, "publish_results": publish_results}
+        telegram_result = send_to_telegram(
+            json.dumps(enhanced_data, ensure_ascii=False),
+            contract_address=first_contract_address,
+            tweet_url=first_tweet_url,
+        )
+
+        overall_success = bool(telegram_result.get("success")) and chain_success_count > 0
+        logging.info(
+            "%s done targets=%s chain_success=%s x_success=%s telegram_success=%s",
+            log_prefix,
+            len(targets),
+            chain_success_count,
+            x_success_count,
+            bool(telegram_result.get("success")),
+        )
+        return {
+            "success": overall_success,
+            "targets_count": len(targets),
+            "published_count": chain_success_count,
+            "x_posted_count": x_success_count,
+            "results": publish_results,
+            "telegram": telegram_result,
+        }
+
     def send_to_telegram(poll_data: str, contract_address: str = "", chain_push_error: str = "", tweet_url: str = "", twitter_push_error: str = "") -> dict:
         """
         Send formatted poll notification to configured Telegram chats.
@@ -449,6 +630,155 @@ def build_publish_agent(settings: Settings) -> Agent:
                 return ""
             return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+        group_chat_ids = settings.telegram_group_chat_ids
+        channel_chat_ids = settings.telegram_channel_chat_ids
+        if not group_chat_ids and not channel_chat_ids:
+            error_msg = "No Telegram chat IDs configured"
+            logging.error("%s failure: %s", log_prefix, error_msg)
+            return {"success": False, "error": error_msg}
+
+        publish_results_value = data.get("publish_results")
+        publish_results = publish_results_value if isinstance(publish_results_value, list) else []
+        if publish_results:
+            source_polls: dict[str, dict] = {}
+            sources_value = data.get("sources")
+            if isinstance(sources_value, list):
+                for source_item in sources_value:
+                    if not isinstance(source_item, dict):
+                        continue
+                    source_group = source_item.get("source_group")
+                    source_poll = source_item.get("poll")
+                    if isinstance(source_group, str) and isinstance(source_poll, dict):
+                        source_polls[source_group] = source_poll
+
+            main_poll = data.get("poll")
+            if isinstance(main_poll, dict):
+                source_polls.setdefault(main_poll.get("source_group", "X_HANDLES"), main_poll)
+            private_poll = data.get("private_wires_poll")
+            if isinstance(private_poll, dict):
+                source_polls.setdefault(private_poll.get("source_group", "PRIVATE_WIRES"), private_poll)
+
+            group_results: list[dict] = []
+            channel_results: list[dict] = []
+            sent_count = 0
+            total_chats = 0
+            valid_items = [item for item in publish_results if isinstance(item, dict)]
+            total_items = len(valid_items)
+            for idx, item in enumerate(valid_items, 1):
+                source_group = str(item.get("source_group", "UNKNOWN"))
+                source_poll = source_polls.get(source_group, {}) if isinstance(source_polls.get(source_group), dict) else {}
+                title = (
+                    item.get("title")
+                    or source_poll.get("title")
+                    or source_poll.get("topic_title")
+                    or "N/A"
+                )
+                tag = (
+                    item.get("tag")
+                    or source_poll.get("tag")
+                    or source_poll.get("category")
+                    or source_group
+                )
+                description = source_poll.get("description") or source_poll.get("poll_question", "")
+                options = source_poll.get("options", []) if isinstance(source_poll.get("options"), list) else []
+
+                chain_item = item.get("chain") if isinstance(item.get("chain"), dict) else {}
+                x_item = item.get("x") if isinstance(item.get("x"), dict) else {}
+                vote_url = str(item.get("vote_url", "") or "")
+                tweet_url = str(item.get("tweet_url", "") or "")
+                chain_ok = bool(chain_item.get("success"))
+                x_ok = bool(x_item.get("success"))
+                chain_error = str(chain_item.get("error", "Unknown error"))
+                x_error = str(x_item.get("error", "Unknown error"))
+
+                message_lines = [
+                    f"🗳️ <b>Poll Agent Update ({idx}/{total_items})</b>",
+                    f"⏰ {timestamp}",
+                    "━━━━━━━━━━━━━━━━━━━━",
+                    f"🔖 <b>Source</b>: {html_escape(source_group)}",
+                    f"❓ <b>Title</b>: {html_escape(title)}",
+                    f"🏷️ <b>Tag</b>: {html_escape(tag)}",
+                ]
+                if description:
+                    message_lines.append(f"📝 <b>Description</b>: {html_escape(description)}")
+                if options:
+                    message_lines.append("📊 <b>Options</b>:")
+                    for option_idx, opt in enumerate(options, 1):
+                        message_lines.append(f"   {option_idx}. {html_escape(opt)}")
+
+                if chain_ok and vote_url:
+                    message_lines.append(f"⛓️ <b>Chain</b>: ✅ <a href='{vote_url}'>Vote URL</a>")
+                elif chain_ok:
+                    message_lines.append("⛓️ <b>Chain</b>: ✅")
+                else:
+                    message_lines.append(f"⛓️ <b>Chain</b>: ❌ {html_escape(chain_error)}")
+
+                if x_ok and tweet_url:
+                    message_lines.append(f"🐦 <b>X</b>: ✅ <a href='{tweet_url}'>View Tweet</a>")
+                elif x_ok:
+                    message_lines.append("🐦 <b>X</b>: ✅")
+                else:
+                    message_lines.append(f"🐦 <b>X</b>: ❌ {html_escape(x_error)}")
+
+                message_lines.append("━━━━━━━━━━━━━━━━━━━━")
+                group_message = "\n".join(message_lines)
+
+                channel_lines = [
+                    f"🗳️ <b>{html_escape(str(title))}</b>",
+                    f"🏷️ {html_escape(str(tag))}",
+                ]
+                if vote_url:
+                    channel_lines.append(f"👉 <a href='{vote_url}'>Vote Here</a>")
+                elif tweet_url:
+                    channel_lines.append(f"👉 <a href='{tweet_url}'>View on X</a>")
+                channel_message = "\n".join(channel_lines)
+
+                if group_chat_ids:
+                    logging.info(
+                        "%s sending sequential group message %s/%s",
+                        log_prefix,
+                        idx,
+                        total_items,
+                    )
+                    group_result = send_telegram_message(
+                        message=group_message,
+                        telegram_token=settings.telegram_token,
+                        chat_ids=group_chat_ids,
+                    )
+                    group_results.append({"index": idx, "source_group": source_group, "result": group_result})
+                    sent_count += group_result.get("sent_count", 0)
+                    total_chats += group_result.get("total_chats", 0)
+
+                if channel_chat_ids and channel_message:
+                    logging.info(
+                        "%s sending sequential channel message %s/%s",
+                        log_prefix,
+                        idx,
+                        total_items,
+                    )
+                    channel_result = send_telegram_message(
+                        message=channel_message,
+                        telegram_token=settings.telegram_token,
+                        chat_ids=channel_chat_ids,
+                    )
+                    channel_results.append({"index": idx, "source_group": source_group, "result": channel_result})
+                    sent_count += channel_result.get("sent_count", 0)
+                    total_chats += channel_result.get("total_chats", 0)
+
+            success = sent_count > 0
+            if success:
+                logging.info("%s sequential send success sent=%s/%s", log_prefix, sent_count, total_chats)
+            else:
+                logging.error("%s sequential send failure: no messages sent", log_prefix)
+
+            return {
+                "success": success,
+                "sent_count": sent_count,
+                "total_chats": total_chats,
+                "group": group_results,
+                "channel": channel_results,
+            }
+
         message_lines = [
             "🗳️ <b>Poll Agent Update</b>",
             f"⏰ {timestamp}",
@@ -458,6 +788,7 @@ def build_publish_agent(settings: Settings) -> Agent:
         # Extract poll data
         per_handle = data.get("per_handle", [])
         poll = data.get("poll")
+        private_wires_poll = data.get("private_wires_poll")
 
         # Find which handle contributed the poll (for display purposes)
         poll_handle = None
@@ -514,10 +845,56 @@ def build_publish_agent(settings: Settings) -> Agent:
             if stats:
                 message_lines.append(f"📊 <b>Engagement</b>: ❤️{stats.get('likes', 0)} 🔁{stats.get('reposts', 0)} 💬{stats.get('replies', 0)} 👁️{stats.get('views', 0)}")
 
-            # Show on-chain status
+            if isinstance(private_wires_poll, dict):
+                private_title = private_wires_poll.get("title") or private_wires_poll.get("topic_title", "N/A")
+                private_tag = private_wires_poll.get("tag") or private_wires_poll.get("category") or "PRIVATE_WIRES"
+                private_description = private_wires_poll.get("description") or private_wires_poll.get("poll_question", "N/A")
+                private_options = private_wires_poll.get("options", [])
+                message_lines.append("")
+                message_lines.append("🧭 <b>PRIVATE_WIRES Candidate</b>")
+                message_lines.append(f"❓ <b>{html_escape(private_title)}</b>")
+                message_lines.append(f"🏷️ <b>Tag</b>: {html_escape(private_tag)}")
+                message_lines.append(f"📝 {html_escape(private_description)}")
+                if private_options:
+                    message_lines.append("📊 <b>Options</b>:")
+                    for i, opt in enumerate(private_options, 1):
+                        message_lines.append(f"   {i}. {html_escape(opt)}")
+
+            # Show publish status
             message_lines.append("")  # Empty line for separation
-            if contract_address:
-                # Chain push succeeded - construct vote URL
+            if publish_results:
+                message_lines.append("🚀 <b>Publish Results</b>")
+                for item in publish_results:
+                    if not isinstance(item, dict):
+                        continue
+                    source_group = item.get("source_group", "UNKNOWN")
+                    item_title = item.get("title", "N/A")
+                    chain_item = item.get("chain") if isinstance(item.get("chain"), dict) else {}
+                    x_item = item.get("x") if isinstance(item.get("x"), dict) else {}
+                    item_vote_url = item.get("vote_url", "")
+                    item_tweet_url = item.get("tweet_url", "")
+                    chain_ok = bool(chain_item.get("success"))
+                    x_ok = bool(x_item.get("success"))
+                    message_lines.append(f"   • <b>{html_escape(str(source_group))}</b>: {html_escape(str(item_title))}")
+                    if chain_ok and item_vote_url:
+                        message_lines.append(f"     ⛓️ Chain: ✅ <a href='{item_vote_url}'>Vote URL</a>")
+                    elif chain_ok:
+                        message_lines.append("     ⛓️ Chain: ✅")
+                    else:
+                        message_lines.append(
+                            f"     ⛓️ Chain: ❌ {html_escape(str(chain_item.get('error', 'Unknown error')))}"
+                        )
+
+                    if x_ok and item_tweet_url:
+                        message_lines.append(f"     🐦 X: ✅ <a href='{item_tweet_url}'>View Tweet</a>")
+                    elif x_ok:
+                        message_lines.append("     🐦 X: ✅")
+                    else:
+                        message_lines.append(
+                            f"     🐦 X: ❌ {html_escape(str(x_item.get('error', 'Unknown error')))}"
+                        )
+                message_lines.append("")
+            elif contract_address:
                 vote_base_url = settings.world_maci_vote_url
                 if not vote_base_url.endswith('/'):
                     vote_base_url += '/'
@@ -527,32 +904,35 @@ def build_publish_agent(settings: Settings) -> Agent:
                 message_lines.append(f"<a href='{vote_url}'><b>🗳️ 👉 C L I C K   T O   V O T E 👈 🗳️</b></a>")
                 message_lines.append(f"👆👆👆")
             elif chain_push_error:
-                # Chain push attempted but failed
                 message_lines.append(f"⛓️ <b>Publish Poll</b>: ❌ Failed")
                 message_lines.append(f"   <b>Error</b>: {html_escape(chain_push_error)}")
             else:
-                # Chain push not configured or skipped
                 message_lines.append(f"⛓️ <b>Publish Poll</b>: ⏭️ Skipped")
                 message_lines.append(f"   <i>(World MACI API not configured)</i>")
 
-            # Show Twitter status
-            message_lines.append("")  # Empty line for separation
-            if tweet_url:
-                # Twitter push succeeded
-                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ✅ Success")
-                message_lines.append(f"   <a href='{tweet_url}'>View Tweet</a>")
-            elif twitter_push_error:
-                # Twitter push attempted but failed
-                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ❌ Failed")
-                message_lines.append(f"   <b>Error</b>: {html_escape(twitter_push_error)}")
-            else:
-                # Twitter push not configured or skipped
-                message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ⏭️ Skipped")
-                message_lines.append(f"   <i>(Twitter API credentials not configured)</i>")
+            if not publish_results:
+                message_lines.append("")  # Empty line for separation
+                if tweet_url:
+                    message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ✅ Success")
+                    message_lines.append(f"   <a href='{tweet_url}'>View Tweet</a>")
+                elif twitter_push_error:
+                    message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ❌ Failed")
+                    message_lines.append(f"   <b>Error</b>: {html_escape(twitter_push_error)}")
+                else:
+                    message_lines.append(f"🐦 <b>Posted to X (Twitter)</b>: ⏭️ Skipped")
+                    message_lines.append(f"   <i>(Twitter API credentials not configured)</i>")
         else:
             # No poll generated
             explain = data.get("explain", "No suitable poll topic")
             message_lines.append(f"ℹ️ <b>Status</b>\n{html_escape(explain)}\n")
+
+            if isinstance(private_wires_poll, dict):
+                private_title = private_wires_poll.get("title") or private_wires_poll.get("topic_title", "N/A")
+                private_tag = private_wires_poll.get("tag") or private_wires_poll.get("category") or "PRIVATE_WIRES"
+                message_lines.append("🧭 <b>PRIVATE_WIRES Candidate</b>")
+                message_lines.append(f"❓ <b>{html_escape(private_title)}</b>")
+                message_lines.append(f"🏷️ <b>Tag</b>: {html_escape(private_tag)}")
+                message_lines.append("")
 
             if per_handle:
                 message_lines.append("📊 <b>Handle Status</b>")
@@ -563,13 +943,6 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         message_lines.append("\n━━━━━━━━━━━━━━━━━━━━")
         group_message = "\n".join(message_lines)
-
-        group_chat_ids = settings.telegram_group_chat_ids
-        channel_chat_ids = settings.telegram_channel_chat_ids
-        if not group_chat_ids and not channel_chat_ids:
-            error_msg = "No Telegram chat IDs configured"
-            logging.error("%s failure: %s", log_prefix, error_msg)
-            return {"success": False, "error": error_msg}
 
         channel_lines: list[str] = []
         if poll and poll is not None:
@@ -594,6 +967,16 @@ def build_publish_agent(settings: Settings) -> Agent:
                 vote_url = f"{vote_base_url}{contract_address}"
             elif tweet_url:
                 vote_url = tweet_url
+            elif publish_results:
+                for item in publish_results:
+                    if isinstance(item, dict) and item.get("vote_url"):
+                        vote_url = item.get("vote_url", "")
+                        break
+                if not vote_url:
+                    for item in publish_results:
+                        if isinstance(item, dict) and item.get("tweet_url"):
+                            vote_url = item.get("tweet_url", "")
+                            break
 
             if vote_url:
                 channel_lines.append(f"👉 <a href='{vote_url}'>Vote Here</a>")
@@ -642,26 +1025,12 @@ def build_publish_agent(settings: Settings) -> Agent:
         "You are the publish_agent responsible for publishing poll results to various platforms.\n\n"
         "Workflow:\n"
         "1. Receive poll data from the main agent (may be JSON string or object)\n"
-        "2. If there is a valid poll:\n"
-        "   a. Call push_to_chain(poll_data) to deploy poll on-chain\n"
-        "      - If success=true: Extract contract_address from result\n"
-        "      - If success=false: Extract error message from result\n"
-        "   b. If push_to_chain succeeded (has contract_address):\n"
-        "      - Construct vote_url = world_maci_vote_url + contract_address\n"
-        "      - Call push_to_x(poll_data, vote_url) to post on Twitter\n"
-        "      - If success=true: Extract tweet_url from result\n"
-        "      - If success=false: Extract error message from result\n"
-        "   c. Call send_to_telegram with all collected parameters:\n"
-        "      - Full success: send_to_telegram(poll_data, contract_address=<addr>, tweet_url=<url>)\n"
-        "      - Chain only: send_to_telegram(poll_data, contract_address=<addr>, twitter_push_error=<error>)\n"
-        "      - Chain failed: send_to_telegram(poll_data, chain_push_error=<error>)\n"
-        "3. If no valid poll, just call send_to_telegram(poll_data)\n"
-        "4. Output the final result\n\n"
+        "2. MUST call publish_all(poll_data) exactly once.\n"
+        "3. Output the tool result JSON directly.\n\n"
         "IMPORTANT:\n"
-        "- ALWAYS call send_to_telegram regardless of push_to_chain or push_to_x result\n"
-        "- Only call push_to_x if push_to_chain succeeded (need vote_url)\n"
-        "- Pass all status information to send_to_telegram so users see what happened\n"
-        "- Don't construct vote_url yourself - it's world_maci_vote_url + '/' + contract_address"
+        "- publish_all handles both single-poll and multi-poll payloads.\n"
+        "- For multi-poll payloads, it publishes each poll one by one (order does not matter).\n"
+        "- publish_all always sends Telegram summary after publish attempts."
     )
 
     # Use LiteLlm to load Grok model
@@ -679,5 +1048,5 @@ def build_publish_agent(settings: Settings) -> Agent:
         include_contents='none',
         instruction=instruction_text,
         description="Publishes poll results to configured platforms (World MACI API + Twitter/X + Telegram).",
-        tools=[push_to_chain, push_to_x, send_to_telegram],
+        tools=[publish_all],
     )
