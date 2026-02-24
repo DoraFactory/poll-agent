@@ -670,6 +670,7 @@ def build_publish_agent(settings: Settings) -> Agent:
         publish_results = publish_results_value if isinstance(publish_results_value, list) else []
         if publish_results:
             source_polls: dict[str, dict] = {}
+            source_per_handles: dict[str, list] = {}
             sources_value = data.get("sources")
             if isinstance(sources_value, list):
                 for source_item in sources_value:
@@ -677,8 +678,12 @@ def build_publish_agent(settings: Settings) -> Agent:
                         continue
                     source_group = source_item.get("source_group")
                     source_poll = source_item.get("poll")
-                    if isinstance(source_group, str) and isinstance(source_poll, dict):
-                        source_polls[source_group] = source_poll
+                    source_per_handle = source_item.get("per_handle")
+                    if isinstance(source_group, str):
+                        if isinstance(source_poll, dict):
+                            source_polls[source_group] = source_poll
+                        if isinstance(source_per_handle, list):
+                            source_per_handles[source_group] = source_per_handle
 
             main_poll = data.get("poll")
             if isinstance(main_poll, dict):
@@ -695,110 +700,81 @@ def build_publish_agent(settings: Settings) -> Agent:
             total_items = len(valid_items)
             for idx, item in enumerate(valid_items, 1):
                 source_group = str(item.get("source_group", "UNKNOWN"))
-                source_poll = source_polls.get(source_group, {}) if isinstance(source_polls.get(source_group), dict) else {}
-                title = (
-                    item.get("title")
-                    or source_poll.get("title")
-                    or source_poll.get("topic_title")
-                    or "N/A"
-                )
-                tag = (
-                    item.get("tag")
-                    or source_poll.get("tag")
-                    or source_poll.get("category")
-                    or source_group
-                )
-                description = source_poll.get("description") or source_poll.get("poll_question", "")
-                options = source_poll.get("options", []) if isinstance(source_poll.get("options"), list) else []
-
+                source_poll_value = source_polls.get(source_group)
+                source_poll = source_poll_value if isinstance(source_poll_value, dict) else None
+                if not source_poll:
+                    source_poll = {}
+                    title = item.get("title")
+                    if title:
+                        source_poll["title"] = title
+                    tag = item.get("tag")
+                    if tag:
+                        source_poll["tag"] = tag
                 chain_item = item.get("chain") if isinstance(item.get("chain"), dict) else {}
                 x_item = item.get("x") if isinstance(item.get("x"), dict) else {}
-                vote_url = str(item.get("vote_url", "") or "")
+                contract_address_value = item.get("contract_address")
+                contract_address = (
+                    str(contract_address_value).strip()
+                    if contract_address_value is not None
+                    else ""
+                )
                 tweet_url = str(item.get("tweet_url", "") or "")
                 chain_ok = bool(chain_item.get("success"))
                 x_ok = bool(x_item.get("success"))
-                chain_error = str(chain_item.get("error", "Unknown error"))
-                x_error = str(x_item.get("error", "Unknown error"))
+                chain_error = "" if chain_ok else str(chain_item.get("error", "Unknown error"))
+                x_error = "" if x_ok else str(x_item.get("error", "Unknown error"))
 
-                message_lines = [
-                    f"🗳️ <b>Poll Agent Update ({idx}/{total_items})</b>",
-                    f"⏰ {timestamp}",
-                    "━━━━━━━━━━━━━━━━━━━━",
-                    f"🔖 <b>Source</b>: {html_escape(source_group)}",
-                    f"❓ <b>Title</b>: {html_escape(title)}",
-                    f"🏷️ <b>Tag</b>: {html_escape(tag)}",
-                ]
-                if description:
-                    message_lines.append(f"📝 <b>Description</b>: {html_escape(description)}")
-                if options:
-                    message_lines.append("📊 <b>Options</b>:")
-                    for option_idx, opt in enumerate(options, 1):
-                        message_lines.append(f"   {option_idx}. {html_escape(opt)}")
+                per_handle_value = source_per_handles.get(source_group)
+                per_handle = per_handle_value if isinstance(per_handle_value, list) else []
+                if not per_handle:
+                    if source_group == "PRIVATE_WIRES":
+                        private_per_handle = data.get("private_wires_per_handle")
+                        per_handle = private_per_handle if isinstance(private_per_handle, list) else []
+                    else:
+                        primary_per_handle = data.get("per_handle")
+                        per_handle = primary_per_handle if isinstance(primary_per_handle, list) else []
 
-                if chain_ok and vote_url:
-                    message_lines.append(f"⛓️ <b>Chain</b>: ✅ <a href='{vote_url}'>Vote URL</a>")
-                elif chain_ok:
-                    message_lines.append("⛓️ <b>Chain</b>: ✅")
-                else:
-                    message_lines.append(f"⛓️ <b>Chain</b>: ❌ {html_escape(chain_error)}")
+                single_payload = {
+                    "per_handle": per_handle,
+                    "poll": source_poll,
+                }
 
-                if x_ok and tweet_url:
-                    message_lines.append(f"🐦 <b>X</b>: ✅ <a href='{tweet_url}'>View Tweet</a>")
-                elif x_ok:
-                    message_lines.append("🐦 <b>X</b>: ✅")
-                else:
-                    message_lines.append(f"🐦 <b>X</b>: ❌ {html_escape(x_error)}")
-
-                message_lines.append("━━━━━━━━━━━━━━━━━━━━")
-                group_message = "\n".join(message_lines)
-
-                channel_lines = [
-                    f"🗳️ <b>{html_escape(str(title))}</b>",
-                    f"🏷️ {html_escape(str(tag))}",
-                ]
-                if vote_url:
-                    channel_lines.append(f"👉 <a href='{vote_url}'>Vote Here</a>")
-                elif tweet_url:
-                    channel_lines.append(f"👉 <a href='{tweet_url}'>View on X</a>")
-                channel_message = "\n".join(channel_lines)
-
-                if group_chat_ids:
-                    logging.info(
-                        "%s sending sequential group message %s/%s",
-                        log_prefix,
-                        idx,
-                        total_items,
-                    )
-                    group_result = send_telegram_message(
-                        message=group_message,
-                        telegram_token=settings.telegram_token,
-                        chat_ids=group_chat_ids,
-                    )
-                    group_results.append({"index": idx, "source_group": source_group, "result": group_result})
-                    sent_count += group_result.get("sent_count", 0)
-                    total_chats += group_result.get("total_chats", 0)
-
-                if channel_chat_ids and channel_message:
-                    logging.info(
-                        "%s sending sequential channel message %s/%s",
-                        log_prefix,
-                        idx,
-                        total_items,
-                    )
-                    channel_result = send_telegram_message(
-                        message=channel_message,
-                        telegram_token=settings.telegram_token,
-                        chat_ids=channel_chat_ids,
-                    )
-                    channel_results.append({"index": idx, "source_group": source_group, "result": channel_result})
-                    sent_count += channel_result.get("sent_count", 0)
-                    total_chats += channel_result.get("total_chats", 0)
+                logging.info(
+                    "%s sending sequential message %s/%s source=%s with legacy template",
+                    log_prefix,
+                    idx,
+                    total_items,
+                    source_group,
+                )
+                single_result = send_to_telegram(
+                    json.dumps(single_payload, ensure_ascii=False),
+                    contract_address=contract_address,
+                    chain_push_error=chain_error,
+                    tweet_url=tweet_url,
+                    twitter_push_error=x_error,
+                )
+                group_results.append(
+                    {
+                        "index": idx,
+                        "source_group": source_group,
+                        "result": single_result.get("group"),
+                    }
+                )
+                channel_results.append(
+                    {
+                        "index": idx,
+                        "source_group": source_group,
+                        "result": single_result.get("channel"),
+                    }
+                )
+                sent_count += single_result.get("sent_count", 0)
+                total_chats += single_result.get("total_chats", 0)
 
             success = sent_count > 0
             if success:
-                logging.info("%s sequential send success sent=%s/%s", log_prefix, sent_count, total_chats)
+                logging.info("%s sequential legacy send success sent=%s/%s", log_prefix, sent_count, total_chats)
             else:
-                logging.error("%s sequential send failure: no messages sent", log_prefix)
+                logging.error("%s sequential legacy send failure: no messages sent", log_prefix)
 
             return {
                 "success": success,
