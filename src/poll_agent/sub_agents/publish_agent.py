@@ -423,6 +423,19 @@ def build_publish_agent(settings: Settings) -> Agent:
             [t.get("source_group") for t in targets if isinstance(t, dict)],
         )
         if not targets:
+            cached_payload = settings.latest_x_feed_payload
+            if isinstance(cached_payload, dict):
+                cached_targets = _extract_publish_targets(cached_payload)
+                logging.info(
+                    "%s retry targets from cached x_feed payload count=%s groups=%s",
+                    log_prefix,
+                    len(cached_targets),
+                    [t.get("source_group") for t in cached_targets if isinstance(t, dict)],
+                )
+                if cached_targets:
+                    data = cached_payload
+                    targets = cached_targets
+        if not targets:
             logging.info("%s no publishable polls; sending heartbeat telegram only", log_prefix)
             telegram_result = send_to_telegram(json.dumps(data, ensure_ascii=False))
             return {

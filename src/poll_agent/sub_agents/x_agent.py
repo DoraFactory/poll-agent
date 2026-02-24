@@ -112,6 +112,7 @@ def build_x_feed_agent(settings: Settings) -> Agent:
                 },
             ],
         }
+        settings.latest_x_feed_payload = combined
         raw_combined = json.dumps(combined, ensure_ascii=False)
         return {
             "handles": {

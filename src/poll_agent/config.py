@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, List
 
 try:
     from dotenv import load_dotenv
@@ -87,6 +87,7 @@ class Settings:
     )
     # Populated at runtime on service start (not from env)
     recent_round_titles: List[str] = field(default_factory=list, init=False, repr=False)
+    latest_x_feed_payload: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     # Twitter API v2 settings (OAuth 1.0a)
     twitter_api_key: str = field(default_factory=lambda: os.getenv("TWITTER_API_KEY", ""))
