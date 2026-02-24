@@ -34,6 +34,7 @@ class Settings:
     # Model for Grok x_search
     grok_model: str = field(default_factory=lambda: os.getenv("GROK_MODEL", "grok-beta"))
     default_handles: List[str] = field(default_factory=lambda: _parse_handles(os.getenv("X_HANDLES")))
+    private_wires: List[str] = field(default_factory=lambda: _parse_handles(os.getenv("PRIVATE_WIRES")))
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "agents"))
     poll_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("POLL_INTERVAL_SECONDS", "1800"))
@@ -63,6 +64,9 @@ class Settings:
     # World MACI API settings
     world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))
     world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
+    vercel_automation_bypass_secret: str = field(
+        default_factory=lambda: os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+    )
     world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", ""))
     world_maci_connect_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("WORLD_MACI_CONNECT_TIMEOUT_SECONDS", "10"))
