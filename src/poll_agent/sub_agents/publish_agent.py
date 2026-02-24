@@ -1074,7 +1074,7 @@ def build_publish_agent(settings: Settings) -> Agent:
         model=f"xai/{settings.agent_model}",
     )
 
-    return Agent(
+    agent = Agent(
         name="publish_agent",
         model=grok_llm,
         include_contents='none',
@@ -1082,3 +1082,5 @@ def build_publish_agent(settings: Settings) -> Agent:
         description="Publishes poll results to configured platforms (World MACI API + Twitter/X + Telegram).",
         tools=[publish_all],
     )
+    setattr(agent, "_publish_all_impl", publish_all)
+    return agent
