@@ -88,6 +88,26 @@ def build_publish_agent(settings: Settings) -> Agent:
                 }
             )
 
+        sources_value = data.get("sources")
+        if isinstance(sources_value, list):
+            for source_item in sources_value:
+                if not isinstance(source_item, dict):
+                    continue
+                source_group = source_item.get("source_group")
+                source_poll = source_item.get("poll")
+                source_per_handle = source_item.get("per_handle")
+                if source_group not in ("X_HANDLES", "PRIVATE_WIRES"):
+                    if isinstance(source_poll, dict):
+                        tag = source_poll.get("tag") or source_poll.get("category")
+                        source_group = "PRIVATE_WIRES" if tag == "PRIVATE_WIRES" else "X_HANDLES"
+                    else:
+                        source_group = "X_HANDLES"
+                _add_target(
+                    str(source_group),
+                    source_poll if isinstance(source_poll, dict) else None,
+                    source_per_handle if isinstance(source_per_handle, list) else [],
+                )
+
         polls_value = data.get("polls")
         if isinstance(polls_value, list):
             for item in polls_value:
@@ -396,6 +416,12 @@ def build_publish_agent(settings: Settings) -> Agent:
             return {"success": False, "error": error_msg}
 
         targets = _extract_publish_targets(data)
+        logging.info(
+            "%s targets extracted count=%s groups=%s",
+            log_prefix,
+            len(targets),
+            [t.get("source_group") for t in targets if isinstance(t, dict)],
+        )
         if not targets:
             logging.info("%s no publishable polls; sending heartbeat telegram only", log_prefix)
             telegram_result = send_to_telegram(json.dumps(data, ensure_ascii=False))
