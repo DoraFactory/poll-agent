@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 import time
 import traceback
 import uuid
+from typing import Callable, Optional
 
 try:
     from google.adk.models import google_llm as _google_llm
@@ -23,6 +25,18 @@ def _truncate_for_log(text: str, max_len: int = 900) -> str:
     if len(text) <= max_len:
         return text
     return f"{text[:max_len]}…<truncated len={len(text)}>"
+
+
+def _find_publish_all_impl(runner) -> Optional[Callable[[object], dict]]:
+    agent = getattr(runner, "agent", None)
+    sub_agents = getattr(agent, "sub_agents", None)
+    if not isinstance(sub_agents, list):
+        return None
+    for sub_agent in sub_agents:
+        impl = getattr(sub_agent, "_publish_all_impl", None)
+        if callable(impl):
+            return impl
+    return None
 
 
 def main() -> int:
@@ -207,6 +221,30 @@ def main() -> int:
                 logging.info("[agent=poll_orchestrator] final response: %s", _truncate_for_log(final_text))
             else:
                 logging.warning("[agent=poll_orchestrator] no final response produced.")
+
+            publish_called = any("tool_call: publish_all" in call for call in tool_calls)
+            publish_result_like = bool(final_text) and all(
+                marker in final_text for marker in ('"targets_count"', '"published_count"', '"x_posted_count"')
+            )
+            if final_text and not publish_called and not publish_result_like:
+                publish_impl = _find_publish_all_impl(runner)
+                if publish_impl:
+                    logging.warning(
+                        "[main] publish_all was not called by model; triggering deterministic fallback publish."
+                    )
+                    try:
+                        publish_result = publish_impl(final_text)
+                        final_text = json.dumps(publish_result, ensure_ascii=False)
+                        tool_calls.append("fallback_call: publish_all")
+                        logging.info(
+                            "[main] fallback publish result: %s",
+                            _truncate_for_log(final_text),
+                        )
+                    except Exception as publish_exc:
+                        logging.error("[main] fallback publish failed: %s", publish_exc)
+                        traceback.print_exc()
+                else:
+                    logging.error("[main] publish_all fallback unavailable (implementation not found).")
 
             iteration_ok = bool(final_text)
             log_metric(
