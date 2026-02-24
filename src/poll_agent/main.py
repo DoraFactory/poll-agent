@@ -233,7 +233,15 @@ def main() -> int:
                         "[main] publish_all was not called by model; triggering deterministic fallback publish."
                     )
                     try:
-                        publish_result = publish_impl(final_text)
+                        cached_payload = settings.latest_x_feed_payload
+                        if isinstance(cached_payload, dict):
+                            fallback_input = cached_payload
+                            fallback_source = "cached_x_feed_payload"
+                        else:
+                            fallback_input = final_text
+                            fallback_source = "final_text"
+                        logging.info("[main] fallback publish input source=%s", fallback_source)
+                        publish_result = publish_impl(fallback_input)
                         final_text = json.dumps(publish_result, ensure_ascii=False)
                         tool_calls.append("fallback_call: publish_all")
                         logging.info(
