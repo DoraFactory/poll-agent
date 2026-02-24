@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from poll_agent.config import Settings
@@ -20,6 +21,50 @@ def build_publish_agent(settings: Settings) -> Agent:
 
     - Agent: Uses Grok model as poll publishing agent
     """
+
+    def _parse_poll_data(poll_data: object) -> dict:
+        if isinstance(poll_data, dict):
+            return poll_data
+        if not isinstance(poll_data, str):
+            raise ValueError("poll_data must be a JSON object or JSON string")
+
+        cleaned = poll_data.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.split('\n')
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = '\n'.join(lines)
+        cleaned = cleaned.replace("\\'", "'")
+
+        def _try_parse(text: str) -> dict | None:
+            try:
+                parsed = json.loads(text)
+                return parsed if isinstance(parsed, dict) else None
+            except (JSONDecodeError, TypeError, ValueError):
+                return None
+
+        parsed = _try_parse(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            parsed = _try_parse(cleaned[start:end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+
+        import ast
+        try:
+            ast_parsed = ast.literal_eval(cleaned)
+            if isinstance(ast_parsed, dict):
+                return ast_parsed
+        except Exception:
+            pass
+
+        raise ValueError("Invalid JSON format in poll_data")
 
     def _extract_publish_targets(data: dict) -> list[dict]:
         targets: list[dict] = []
@@ -329,7 +374,7 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         return result
 
-    def publish_all(poll_data: str) -> dict:
+    def publish_all(poll_data: dict | str) -> dict:
         """
         Publish all available polls in poll_data (e.g. X_HANDLES + PRIVATE_WIRES).
 
@@ -344,27 +389,10 @@ def build_publish_agent(settings: Settings) -> Agent:
         logging.info("%s call len=%s", log_prefix, len(str(poll_data)) if poll_data else 0)
 
         try:
-            if isinstance(poll_data, str):
-                cleaned = poll_data.strip()
-                if cleaned.startswith("```"):
-                    lines = cleaned.split('\n')
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    cleaned = '\n'.join(lines)
-                cleaned = cleaned.replace("\\'", "'")
-                data = json.loads(cleaned)
-            else:
-                data = poll_data
-        except (json.JSONDecodeError, ValueError) as e:
+            data = _parse_poll_data(poll_data)
+        except ValueError as e:
             error_msg = f"Invalid JSON format: {str(e)}"
             logging.error("%s parse_error: %s", log_prefix, error_msg)
-            return {"success": False, "error": error_msg}
-
-        if not isinstance(data, dict):
-            error_msg = "poll_data must be a JSON object"
-            logging.error("%s data_error: %s", log_prefix, error_msg)
             return {"success": False, "error": error_msg}
 
         targets = _extract_publish_targets(data)
@@ -1027,6 +1055,7 @@ def build_publish_agent(settings: Settings) -> Agent:
         "Workflow:\n"
         "1. Receive poll data from the main agent (may be JSON string or object)\n"
         "2. MUST call publish_all(poll_data) exactly once.\n"
+        "   - Prefer passing poll_data as a JSON object (not a stringified JSON blob).\n"
         "3. Output the tool result JSON directly.\n\n"
         "IMPORTANT:\n"
         "- publish_all handles both single-poll and multi-poll payloads.\n"
