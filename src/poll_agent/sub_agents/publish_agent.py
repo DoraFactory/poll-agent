@@ -179,6 +179,7 @@ def build_publish_agent(settings: Settings) -> Agent:
             voting_options=options,
             api_endpoint=settings.world_maci_api_endpoint,
             api_token=settings.world_maci_api_token,
+            vercel_automation_bypass_secret=settings.vercel_automation_bypass_secret,
             connect_timeout_seconds=settings.world_maci_connect_timeout_seconds,
             read_timeout_seconds=settings.world_maci_read_timeout_seconds,
         )

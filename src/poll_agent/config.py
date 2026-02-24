@@ -64,6 +64,9 @@ class Settings:
     # World MACI API settings
     world_maci_api_endpoint: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_ENDPOINT", ""))
     world_maci_api_token: str = field(default_factory=lambda: os.getenv("WORLD_MACI_API_TOKEN", ""))
+    vercel_automation_bypass_secret: str = field(
+        default_factory=lambda: os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+    )
     world_maci_vote_url: str = field(default_factory=lambda: os.getenv("WORLD_MACI_VOTE_URL", ""))
     world_maci_connect_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("WORLD_MACI_CONNECT_TIMEOUT_SECONDS", "10"))

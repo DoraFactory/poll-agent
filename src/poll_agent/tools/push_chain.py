@@ -22,6 +22,7 @@ def push_poll_to_chain(
     voting_options: list[str],
     api_endpoint: str,
     api_token: str,
+    vercel_automation_bypass_secret: str = "",
     *,
     connect_timeout_seconds: float = 10.0,
     read_timeout_seconds: float = 120.0,
@@ -41,6 +42,7 @@ def push_poll_to_chain(
     """
     logging.info("[push_chain] push_poll_to_chain called")
     logging.info(f"[push_chain] title: {poll_title}, options: {voting_options}")
+    logging.info("[push_chain] vercel_bypass_enabled=%s", bool(vercel_automation_bypass_secret))
 
     if not api_endpoint:
         return {
@@ -64,16 +66,19 @@ def push_poll_to_chain(
         idempotency_key = hashlib.sha256(
             f"{poll_title}\n{poll_description}\n{voting_options}".encode("utf-8")
         ).hexdigest()
+        headers = {
+            'Authorization': f'Bearer {api_token}',
+            'Content-Type': 'application/json',
+            # Safe to send even if server doesn't support it; helps prevent duplicates if it does.
+            'Idempotency-Key': idempotency_key,
+        }
+        if vercel_automation_bypass_secret:
+            headers['x-vercel-protection-bypass'] = vercel_automation_bypass_secret
 
         start = time.time()
         response = requests.post(
             api_endpoint,
-            headers={
-                'Authorization': f'Bearer {api_token}',
-                'Content-Type': 'application/json',
-                # Safe to send even if server doesn't support it; helps prevent duplicates if it does.
-                'Idempotency-Key': idempotency_key,
-            },
+            headers=headers,
             json={
                 'pollTitle': poll_title,
                 'pollDescription': poll_description,
