@@ -16,7 +16,7 @@ def build_publish_agent(settings: Settings) -> Agent:
     Currently supports: World MACI API, Twitter (X), and Telegram
 
     Tools:
-    1. publish_all: Publish all available poll candidates (X_HANDLES + PRIVATE_WIRES)
+    1. publish_all: Publish the current X_HANDLES poll candidate
        to chain and X, then send Telegram summary.
 
     - Agent: Uses Grok model as poll publishing agent
@@ -66,6 +66,14 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         raise ValueError("Invalid JSON format in poll_data")
 
+    def _is_private_wires_candidate(source_group: object, poll: object) -> bool:
+        if source_group == "PRIVATE_WIRES":
+            return True
+        if isinstance(poll, dict):
+            tag = poll.get("tag") or poll.get("category")
+            return tag == "PRIVATE_WIRES"
+        return False
+
     def _extract_publish_targets(data: dict) -> list[dict]:
         targets: list[dict] = []
         seen_keys: set[tuple[str, str, tuple[str, ...]]] = set()
@@ -96,12 +104,10 @@ def build_publish_agent(settings: Settings) -> Agent:
                 source_group = source_item.get("source_group")
                 source_poll = source_item.get("poll")
                 source_per_handle = source_item.get("per_handle")
-                if source_group not in ("X_HANDLES", "PRIVATE_WIRES"):
-                    if isinstance(source_poll, dict):
-                        tag = source_poll.get("tag") or source_poll.get("category")
-                        source_group = "PRIVATE_WIRES" if tag == "PRIVATE_WIRES" else "X_HANDLES"
-                    else:
-                        source_group = "X_HANDLES"
+                if _is_private_wires_candidate(source_group, source_poll):
+                    continue
+                if source_group != "X_HANDLES":
+                    source_group = "X_HANDLES"
                 _add_target(
                     str(source_group),
                     source_poll if isinstance(source_poll, dict) else None,
@@ -114,27 +120,17 @@ def build_publish_agent(settings: Settings) -> Agent:
                 if not isinstance(item, dict):
                     continue
                 source_group = item.get("source_group")
-                if source_group not in ("X_HANDLES", "PRIVATE_WIRES"):
-                    tag = item.get("tag") or item.get("category")
-                    source_group = "PRIVATE_WIRES" if tag == "PRIVATE_WIRES" else "X_HANDLES"
-                per_handle = (
-                    data.get("private_wires_per_handle", [])
-                    if source_group == "PRIVATE_WIRES"
-                    else data.get("per_handle", [])
-                )
+                if _is_private_wires_candidate(source_group, item):
+                    continue
+                if source_group != "X_HANDLES":
+                    source_group = "X_HANDLES"
+                per_handle = data.get("per_handle", [])
                 _add_target(source_group, item, per_handle)
 
         poll = data.get("poll")
         poll_source = poll.get("source_group") if isinstance(poll, dict) else "X_HANDLES"
-        _add_target(poll_source or "X_HANDLES", poll if isinstance(poll, dict) else None, data.get("per_handle", []))
-
-        private_poll = data.get("private_wires_poll")
-        private_source = private_poll.get("source_group") if isinstance(private_poll, dict) else "PRIVATE_WIRES"
-        _add_target(
-            private_source or "PRIVATE_WIRES",
-            private_poll if isinstance(private_poll, dict) else None,
-            data.get("private_wires_per_handle", []),
-        )
+        if not _is_private_wires_candidate(poll_source, poll):
+            _add_target("X_HANDLES", poll if isinstance(poll, dict) else None, data.get("per_handle", []))
 
         return targets
 
@@ -396,7 +392,7 @@ def build_publish_agent(settings: Settings) -> Agent:
 
     def publish_all(poll_data: dict | str) -> dict:
         """
-        Publish all available polls in poll_data (e.g. X_HANDLES + PRIVATE_WIRES).
+        Publish the available X_HANDLES poll in poll_data.
 
         For each poll:
         1) push to chain
@@ -707,7 +703,11 @@ def build_publish_agent(settings: Settings) -> Agent:
 
         publish_results_value = data.get("publish_results")
         publish_results = publish_results_value if isinstance(publish_results_value, list) else []
-        if publish_results:
+        valid_publish_results = [
+            item for item in publish_results
+            if isinstance(item, dict) and not _is_private_wires_candidate(item.get("source_group"), item)
+        ]
+        if valid_publish_results:
             source_polls: dict[str, dict] = {}
             source_per_handles: dict[str, list] = {}
             sources_value = data.get("sources")
@@ -725,17 +725,13 @@ def build_publish_agent(settings: Settings) -> Agent:
                             source_per_handles[source_group] = source_per_handle
 
             main_poll = data.get("poll")
-            if isinstance(main_poll, dict):
+            if isinstance(main_poll, dict) and not _is_private_wires_candidate(main_poll.get("source_group"), main_poll):
                 source_polls.setdefault(main_poll.get("source_group", "X_HANDLES"), main_poll)
-            private_poll = data.get("private_wires_poll")
-            if isinstance(private_poll, dict):
-                source_polls.setdefault(private_poll.get("source_group", "PRIVATE_WIRES"), private_poll)
-
             group_results: list[dict] = []
             channel_results: list[dict] = []
             sent_count = 0
             total_chats = 0
-            valid_items = [item for item in publish_results if isinstance(item, dict)]
+            valid_items = valid_publish_results
             total_items = len(valid_items)
             for idx, item in enumerate(valid_items, 1):
                 source_group = str(item.get("source_group", "UNKNOWN"))
@@ -766,12 +762,8 @@ def build_publish_agent(settings: Settings) -> Agent:
                 per_handle_value = source_per_handles.get(source_group)
                 per_handle = per_handle_value if isinstance(per_handle_value, list) else []
                 if not per_handle:
-                    if source_group == "PRIVATE_WIRES":
-                        private_per_handle = data.get("private_wires_per_handle")
-                        per_handle = private_per_handle if isinstance(private_per_handle, list) else []
-                    else:
-                        primary_per_handle = data.get("per_handle")
-                        per_handle = primary_per_handle if isinstance(primary_per_handle, list) else []
+                    primary_per_handle = data.get("per_handle")
+                    per_handle = primary_per_handle if isinstance(primary_per_handle, list) else []
 
                 single_payload = {
                     "per_handle": per_handle,
@@ -832,7 +824,6 @@ def build_publish_agent(settings: Settings) -> Agent:
         # Extract poll data
         per_handle = data.get("per_handle", [])
         poll = data.get("poll")
-        private_wires_poll = data.get("private_wires_poll")
 
         # Find which handle contributed the poll (for display purposes)
         poll_handle = None
@@ -888,21 +879,6 @@ def build_publish_agent(settings: Settings) -> Agent:
             stats = poll.get("stats_snapshot", {})
             if stats:
                 message_lines.append(f"📊 <b>Engagement</b>: ❤️{stats.get('likes', 0)} 🔁{stats.get('reposts', 0)} 💬{stats.get('replies', 0)} 👁️{stats.get('views', 0)}")
-
-            if isinstance(private_wires_poll, dict):
-                private_title = private_wires_poll.get("title") or private_wires_poll.get("topic_title", "N/A")
-                private_tag = private_wires_poll.get("tag") or private_wires_poll.get("category") or "PRIVATE_WIRES"
-                private_description = private_wires_poll.get("description") or private_wires_poll.get("poll_question", "N/A")
-                private_options = private_wires_poll.get("options", [])
-                message_lines.append("")
-                message_lines.append("🧭 <b>PRIVATE_WIRES Candidate</b>")
-                message_lines.append(f"❓ <b>{html_escape(private_title)}</b>")
-                message_lines.append(f"🏷️ <b>Tag</b>: {html_escape(private_tag)}")
-                message_lines.append(f"📝 {html_escape(private_description)}")
-                if private_options:
-                    message_lines.append("📊 <b>Options</b>:")
-                    for i, opt in enumerate(private_options, 1):
-                        message_lines.append(f"   {i}. {html_escape(opt)}")
 
             # Show publish status
             message_lines.append("")  # Empty line for separation
@@ -969,14 +945,6 @@ def build_publish_agent(settings: Settings) -> Agent:
             # No poll generated
             explain = data.get("explain", "No suitable poll topic")
             message_lines.append(f"ℹ️ <b>Status</b>\n{html_escape(explain)}\n")
-
-            if isinstance(private_wires_poll, dict):
-                private_title = private_wires_poll.get("title") or private_wires_poll.get("topic_title", "N/A")
-                private_tag = private_wires_poll.get("tag") or private_wires_poll.get("category") or "PRIVATE_WIRES"
-                message_lines.append("🧭 <b>PRIVATE_WIRES Candidate</b>")
-                message_lines.append(f"❓ <b>{html_escape(private_title)}</b>")
-                message_lines.append(f"🏷️ <b>Tag</b>: {html_escape(private_tag)}")
-                message_lines.append("")
 
             if per_handle:
                 message_lines.append("📊 <b>Handle Status</b>")
